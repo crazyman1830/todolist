@@ -235,22 +235,37 @@ $RECYCLE.BIN/
 data/todos.json
 data/todos.json.backup*
 
+# Demo data files (keep demo structure but ignore generated data)
+demo_data/demo_todos.json
+demo_data/demo_todos.json.backup*
+demo_data/demo_todos.json.manual_demo_*
+demo_data/recovery_test.json
+demo_data/todo_folders/*/
+
 # Todo folders (user-generated content)
 todo_folders/*/
 !todo_folders/.gitkeep
+
+# Application settings (user-specific)
+app_settings.json
+gui_settings.json
+
+# Log files and directories
+logs/
+*.log
+crash_log_*.json
 
 # Test generated files and directories
 test/data/
 test/todo_folders/
 test/__pycache__/
+test/temp_*
+test/test_data_*
 
 # Temporary files
 *.tmp
 *.temp
 *.bak
-
-# Log files
-*.log
 
 # IDE and editor files
 *.swp
@@ -267,3 +282,24 @@ Thumbs.db
 debug.py
 scratch.py
 temp.py
+test_*.py.bak
+
+# Kiro IDE specific (keep configuration structure)
+.kiro/cache/
+.kiro/temp/
+.kiro/logs/
+
+# Performance and profiling
+*.prof
+*.pstats
+profile_*.txt
+
+# Backup files from editors
+*~
+*.orig
+*.rej
+
+# Runtime generated files
+pid.txt
+*.pid
+*.lock
