@@ -130,7 +130,7 @@ class FileService:
             print(f"폴더 삭제 중 예상치 못한 오류: {e}")
             return False
     
-    def open_todo_folder(self, folder_path: str) -> bool:
+    def open_todo_folder(self, folder_path: str) -> tuple[bool, str]:
         """
         할일 폴더를 시스템의 기본 파일 탐색기에서 엽니다.
         크로스 플랫폼을 지원합니다.
@@ -139,33 +139,60 @@ class FileService:
             folder_path: 열 폴더의 경로
             
         Returns:
-            bool: 폴더 열기 성공 여부
+            tuple[bool, str]: (성공 여부, 오류 메시지)
         """
+        if not folder_path or folder_path.strip() == "":
+            return False, "폴더 경로가 비어있습니다."
+        
         if not self.folder_exists(folder_path):
-            print(f"폴더가 존재하지 않습니다: {folder_path}")
-            return False
+            # 폴더가 존재하지 않는 경우 자동 생성 시도
+            try:
+                os.makedirs(folder_path, exist_ok=True)
+                print(f"폴더가 존재하지 않아 새로 생성했습니다: {folder_path}")
+            except OSError as e:
+                return False, f"폴더가 존재하지 않으며 생성에도 실패했습니다.\n경로: {folder_path}\n오류: {e}"
         
         try:
             system = platform.system()
             
             if system == "Windows":
                 # Windows에서는 explorer 사용
-                subprocess.run(["explorer", folder_path], check=True)
+                subprocess.run(["explorer", folder_path], check=True, timeout=10)
             elif system == "Darwin":  # macOS
                 # macOS에서는 open 사용
-                subprocess.run(["open", folder_path], check=True)
+                subprocess.run(["open", folder_path], check=True, timeout=10)
             elif system == "Linux":
                 # Linux에서는 xdg-open 사용
-                subprocess.run(["xdg-open", folder_path], check=True)
+                subprocess.run(["xdg-open", folder_path], check=True, timeout=10)
             else:
-                print(f"지원하지 않는 운영체제입니다: {system}")
-                return False
+                return False, f"지원하지 않는 운영체제입니다: {system}\n수동으로 다음 경로를 열어주세요:\n{folder_path}"
                 
-            return True
+            return True, ""
             
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            print(f"폴더 열기 중 오류가 발생했습니다: {e}")
-            return False
+        except subprocess.TimeoutExpired:
+            return False, "폴더 열기 시간이 초과되었습니다. 시스템이 응답하지 않을 수 있습니다."
+        except subprocess.CalledProcessError as e:
+            if system == "Windows":
+                return False, f"Windows 탐색기를 실행할 수 없습니다.\n오류 코드: {e.returncode}\n수동으로 다음 경로를 열어주세요:\n{folder_path}"
+            elif system == "Darwin":
+                return False, f"macOS Finder를 실행할 수 없습니다.\n오류 코드: {e.returncode}\n수동으로 다음 경로를 열어주세요:\n{folder_path}"
+            elif system == "Linux":
+                return False, f"파일 관리자를 실행할 수 없습니다.\nxdg-open이 설치되어 있는지 확인해주세요.\n수동으로 다음 경로를 열어주세요:\n{folder_path}"
+            else:
+                return False, f"파일 관리자 실행 실패 (오류 코드: {e.returncode})\n수동으로 다음 경로를 열어주세요:\n{folder_path}"
+        except FileNotFoundError as e:
+            if system == "Windows":
+                return False, "Windows 탐색기를 찾을 수 없습니다.\nWindows 시스템에 문제가 있을 수 있습니다."
+            elif system == "Darwin":
+                return False, "macOS Finder를 찾을 수 없습니다.\nmacOS 시스템에 문제가 있을 수 있습니다."
+            elif system == "Linux":
+                return False, "xdg-open을 찾을 수 없습니다.\n다음 명령으로 설치해주세요:\nsudo apt-get install xdg-utils (Ubuntu/Debian)\n또는 해당 배포판의 패키지 관리자를 사용하세요."
+            else:
+                return False, f"파일 관리자를 찾을 수 없습니다: {e}"
+        except PermissionError:
+            return False, f"폴더에 접근할 권한이 없습니다.\n경로: {folder_path}\n관리자 권한으로 실행하거나 폴더 권한을 확인해주세요."
+        except Exception as e:
+            return False, f"예상치 못한 오류가 발생했습니다: {e}\n수동으로 다음 경로를 열어주세요:\n{folder_path}"
     
     def folder_exists(self, folder_path: str) -> bool:
         """

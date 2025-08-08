@@ -68,7 +68,8 @@ class TestStorageService(unittest.TestCase):
         
         expected_data = {
             "todos": [],
-            "next_id": 1
+            "next_id": 1,
+            "next_subtask_id": 1
         }
         self.assertEqual(data, expected_data) 
    

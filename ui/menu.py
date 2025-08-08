@@ -442,11 +442,13 @@ class MenuUI:
                 self.show_error_message("해당 번호의 할일을 찾을 수 없습니다.")
                 continue
             
-            # 폴더 열기 시도
+            # 폴더 열기 시도 (개선된 오류 처리)
             try:
                 # FileService를 통해 폴더 열기
                 file_service = self.todo_service.file_service
-                if file_service.open_todo_folder(todo.folder_path):
+                success, error_message = file_service.open_todo_folder(todo.folder_path)
+                
+                if success:
                     print("\n" + "="*60)
                     print("                    🎉 폴더 열기 완료!")
                     print("="*60)
@@ -457,11 +459,34 @@ class MenuUI:
                     self.show_info_message("💡 파일 탐색기에서 폴더가 열렸습니다. 관련 파일을 저장해보세요!")
                     return
                 else:
-                    self.show_error_message("폴더 열기에 실패했습니다.")
+                    # 상세한 오류 메시지 표시
+                    print("\n" + "="*60)
+                    print("                    ❌ 폴더 열기 실패")
+                    print("="*60)
+                    print(f"  📝 할일: {todo.title}")
+                    print(f"  📁 폴더 경로: {todo.folder_path}")
+                    print("-"*60)
+                    print("🔍 오류 상세:")
+                    print(f"  {error_message}")
+                    print("-"*60)
+                    
+                    # 해결 방법 제시
+                    if "권한" in error_message or "Permission" in error_message:
+                        print("💡 해결 방법:")
+                        print("  • 프로그램을 관리자 권한으로 실행해보세요")
+                        print("  • 폴더 위치의 권한 설정을 확인해보세요")
+                    elif "xdg-open" in error_message:
+                        print("💡 해결 방법:")
+                        print("  • Linux: sudo apt-get install xdg-utils")
+                        print("  • 또는 수동으로 파일 관리자에서 폴더를 열어보세요")
+                    elif "지원하지 않는" in error_message:
+                        print("💡 해결 방법:")
+                        print(f"  • 수동으로 다음 경로를 열어보세요: {todo.folder_path}")
+                    
                     return
                     
             except Exception as e:
-                self.show_error_message(f"폴더 열기 중 오류가 발생했습니다: {e}")
+                self.show_error_message(f"폴더 열기 중 예상치 못한 오류가 발생했습니다: {e}")
                 return
     
     def get_user_input(self, prompt: str) -> str:
