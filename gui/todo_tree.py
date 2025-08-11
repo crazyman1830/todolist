@@ -166,6 +166,21 @@ class TodoTree(ttk.Treeview):
     
     def populate_tree(self, todos: List[Todo]) -> None:
         """Todo 리스트를 트리로 변환하여 표시"""
+        # 기존 진행률 위젯들 제거
+        for widget in self.progress_widgets.values():
+            try:
+                widget.destroy()
+            except:
+                pass
+        self.progress_widgets.clear()
+        
+        # 기존 데이터 클리어
+        self.delete(*self.get_children())
+        self.todo_nodes.clear()
+        self.subtask_nodes.clear()
+        self.node_data.clear()
+        
+        # 새 데이터 추가
         for todo in todos:
             node_id = self.add_todo_node(todo)
             # 확장 상태 복원
@@ -784,31 +799,38 @@ class TodoTree(ttk.Treeview):
     # 외부에서 호출할 이벤트 핸들러들 (실제 구현은 메인 윈도우에서)
     def on_edit_todo(self) -> None:
         """할일 수정 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_edit_todo_callback') and self._on_edit_todo_callback:
+            self._on_edit_todo_callback()
     
     def on_delete_todo(self) -> None:
         """할일 삭제 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_delete_todo_callback') and self._on_delete_todo_callback:
+            self._on_delete_todo_callback()
     
     def on_add_subtask(self) -> None:
         """하위작업 추가 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_add_subtask_callback') and self._on_add_subtask_callback:
+            self._on_add_subtask_callback()
     
     def on_edit_subtask(self) -> None:
         """하위작업 수정 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_edit_subtask_callback') and self._on_edit_subtask_callback:
+            self._on_edit_subtask_callback()
     
     def on_delete_subtask(self) -> None:
         """하위작업 삭제 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_delete_subtask_callback') and self._on_delete_subtask_callback:
+            self._on_delete_subtask_callback()
     
     def on_open_folder(self) -> None:
         """폴더 열기 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_open_folder_callback') and self._on_open_folder_callback:
+            self._on_open_folder_callback()
     
     def on_add_new_todo(self) -> None:
         """새 할일 추가 - 메인 윈도우에서 구현"""
-        pass
+        if hasattr(self, '_on_add_new_todo_callback') and self._on_add_new_todo_callback:
+            self._on_add_new_todo_callback()
     
     def on_toggle_subtask_from_menu(self) -> None:
         """메뉴에서 하위작업 토글"""

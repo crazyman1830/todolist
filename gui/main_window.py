@@ -178,13 +178,13 @@ class MainWindow:
         self.todo_tree = TodoTree(self.tree_frame, self.todo_service)
         
         # 트리 이벤트 핸들러 연결
-        self.todo_tree.on_edit_todo = self.on_edit_todo
-        self.todo_tree.on_delete_todo = self.on_delete_todo
-        self.todo_tree.on_add_subtask = self.on_add_subtask
-        self.todo_tree.on_edit_subtask = self.on_edit_subtask
-        self.todo_tree.on_delete_subtask = self.on_delete_subtask
-        self.todo_tree.on_open_folder = self.on_open_folder
-        self.todo_tree.on_add_new_todo = self.on_add_todo
+        self.todo_tree._on_edit_todo_callback = self.on_edit_todo
+        self.todo_tree._on_delete_todo_callback = self.on_delete_todo
+        self.todo_tree._on_add_subtask_callback = self.on_add_subtask
+        self.todo_tree._on_edit_subtask_callback = self.on_edit_subtask
+        self.todo_tree._on_delete_subtask_callback = self.on_delete_subtask
+        self.todo_tree._on_open_folder_callback = self.on_open_folder
+        self.todo_tree._on_add_new_todo_callback = self.on_add_todo
         self.todo_tree.on_todo_reordered = self.on_todo_reordered
         
     def setup_status_bar(self):
