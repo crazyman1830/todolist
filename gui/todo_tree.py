@@ -760,6 +760,9 @@ class TodoTree(ttk.Treeview):
                     todo = self.todo_service.get_todo_by_id(subtask.todo_id)
                     if todo:
                         self.update_todo_node(todo)
+                    
+                    # 전체 진행률 즉시 업데이트를 위한 이벤트 생성
+                    self.event_generate('<<StatusUpdate>>')
                         
                     # 상태 변경 성공 시 시각적 피드백 (선택사항)
                     self.selection_set(item_id)

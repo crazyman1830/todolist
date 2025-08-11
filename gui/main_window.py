@@ -188,6 +188,9 @@ class MainWindow:
         self.todo_tree._on_refresh_callback = self.on_refresh
         self.todo_tree.on_todo_reordered = self.on_todo_reordered
         
+        # 상태바 업데이트 이벤트 바인딩
+        self.todo_tree.bind('<<StatusUpdate>>', self.on_status_update)
+        
     def setup_status_bar(self):
         """상태바 구현 (할일 개수, 완료율 표시) - 컴포넌트 사용"""
         self.status_bar = StatusBar(self.root)
@@ -575,6 +578,7 @@ class MainWindow:
             if title:
                 todo = self.todo_service.add_todo(title)
                 self.on_refresh()  # 필터 적용하여 새로고침
+                self.update_status_bar()  # 전체 진행률 즉시 업데이트
                 self.status_bar.update_status(f"할일 '{title}'이(가) 추가되었습니다.")
                 self.status_bar.update_last_saved("저장됨")
         except RuntimeError as e:
@@ -605,6 +609,7 @@ class MainWindow:
                 success = self.todo_service.update_todo(todo_id, new_title)
                 if success:
                     self.on_refresh()  # 필터 적용하여 새로고침
+                    self.update_status_bar()  # 전체 진행률 즉시 업데이트
                     self.status_bar.update_status(f"할일이 '{new_title}'(으)로 수정되었습니다.")
                     self.status_bar.update_last_saved("저장됨")
                 else:
@@ -635,6 +640,7 @@ class MainWindow:
             success = self.todo_service.delete_todo(todo_id, delete_folder)
             if success:
                 self.on_refresh()  # 필터 적용하여 새로고침
+                self.update_status_bar()  # 전체 진행률 즉시 업데이트
                 self.status_bar.update_status(f"할일 '{todo.title}'이(가) 삭제되었습니다.")
                 self.status_bar.update_last_saved("저장됨")
             else:
@@ -660,6 +666,7 @@ class MainWindow:
                 subtask = self.todo_service.add_subtask(todo_id, subtask_title)
                 if subtask:
                     self.on_refresh()  # 필터 적용하여 새로고침
+                    self.update_status_bar()  # 전체 진행률 즉시 업데이트
                     self.status_bar.update_status(f"하위작업 '{subtask_title}'이(가) 추가되었습니다.")
                     self.status_bar.update_last_saved("저장됨")
                 else:
@@ -700,6 +707,7 @@ class MainWindow:
                 success = self.todo_service.update_subtask(todo_id, subtask_id, new_title)
                 if success:
                     self.on_refresh()  # 필터 적용하여 새로고침
+                    self.update_status_bar()  # 전체 진행률 즉시 업데이트
                     self.status_bar.update_status(f"하위작업이 '{new_title}'(으)로 수정되었습니다.")
                     self.status_bar.update_last_saved("저장됨")
                 else:
@@ -736,6 +744,7 @@ class MainWindow:
             success = self.todo_service.delete_subtask(todo_id, subtask_id)
             if success:
                 self.on_refresh()  # 필터 적용하여 새로고침
+                self.update_status_bar()  # 전체 진행률 즉시 업데이트
                 self.status_bar.update_status(f"하위작업 '{current_subtask.title}'이(가) 삭제되었습니다.")
                 self.status_bar.update_last_saved("저장됨")
             else:
@@ -1050,6 +1059,10 @@ Python tkinter 기반 할일 관리 프로그램
 라이선스: MIT"""
         
         messagebox.showinfo("프로그램 정보", about_text)
+    
+    def on_status_update(self, event=None):
+        """상태바 즉시 업데이트 이벤트 처리"""
+        self.update_status_bar()
     
     def on_closing(self):
         """윈도우 종료 이벤트 핸들러"""
