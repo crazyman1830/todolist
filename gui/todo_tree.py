@@ -80,6 +80,8 @@ class TodoTree(ttk.Treeview):
         self.todo_context_menu.add_separator()
         self.todo_context_menu.add_command(label="폴더 열기", command=self.on_open_folder)
         self.todo_context_menu.add_separator()
+        self.todo_context_menu.add_command(label="새로고침 (F5)", command=self.on_refresh)
+        self.todo_context_menu.add_separator()
         self.todo_context_menu.add_command(label="모두 확장", command=self.expand_all)
         self.todo_context_menu.add_command(label="모두 축소", command=self.collapse_all)
         
@@ -91,12 +93,14 @@ class TodoTree(ttk.Treeview):
         self.subtask_context_menu.add_command(label="완료 상태 토글 (Space)", command=self.on_toggle_subtask_from_menu)
         self.subtask_context_menu.add_separator()
         self.subtask_context_menu.add_command(label="폴더 열기", command=self.on_open_folder)
+        self.subtask_context_menu.add_separator()
+        self.subtask_context_menu.add_command(label="새로고침 (F5)", command=self.on_refresh)
         
         # 빈 공간용 컨텍스트 메뉴
         self.empty_context_menu = tk.Menu(self, tearoff=0)
         self.empty_context_menu.add_command(label="새 할일 추가 (Ctrl+N)", command=self.on_add_new_todo)
         self.empty_context_menu.add_separator()
-        self.empty_context_menu.add_command(label="새로고침 (F5)", command=self.refresh_tree)
+        self.empty_context_menu.add_command(label="새로고침 (F5)", command=self.on_refresh)
         self.empty_context_menu.add_separator()
         self.empty_context_menu.add_command(label="모두 확장", command=self.expand_all)
         self.empty_context_menu.add_command(label="모두 축소", command=self.collapse_all)
@@ -883,6 +887,14 @@ class TodoTree(ttk.Treeview):
         """새 할일 추가 - 메인 윈도우에서 구현"""
         if hasattr(self, '_on_add_new_todo_callback') and self._on_add_new_todo_callback:
             self._on_add_new_todo_callback()
+    
+    def on_refresh(self) -> None:
+        """새로고침 - 메인 윈도우에서 구현"""
+        if hasattr(self, '_on_refresh_callback') and self._on_refresh_callback:
+            self._on_refresh_callback()
+        else:
+            # 콜백이 없는 경우 기본 새로고침 수행
+            self.refresh_tree()
     
     def on_toggle_subtask_from_menu(self) -> None:
         """메뉴에서 하위작업 토글"""

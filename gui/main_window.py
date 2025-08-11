@@ -185,6 +185,7 @@ class MainWindow:
         self.todo_tree._on_delete_subtask_callback = self.on_delete_subtask
         self.todo_tree._on_open_folder_callback = self.on_open_folder
         self.todo_tree._on_add_new_todo_callback = self.on_add_todo
+        self.todo_tree._on_refresh_callback = self.on_refresh
         self.todo_tree.on_todo_reordered = self.on_todo_reordered
         
     def setup_status_bar(self):
