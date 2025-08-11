@@ -59,7 +59,7 @@ class TodoTree(ttk.Treeview):
         self.heading('#0', text='제목', anchor='w')
         
         # 진행률 컬럼 설정 (더 넓게 설정하여 진행률 바 표시)
-        self.column('progress', width=120, minwidth=100, anchor='center')
+        self.column('progress', width=140, minwidth=120, anchor='center')
         self.heading('progress', text='진행률', anchor='center')
         
         # 생성일 컬럼 설정
@@ -120,6 +120,11 @@ class TodoTree(ttk.Treeview):
         
         # 체크박스 토글을 위한 가상 이벤트
         self.bind('<<CheckboxToggle>>', self.on_checkbox_toggle)
+        
+        # 스크롤 및 크기 변경 이벤트 (진행률 바 위치 재조정용)
+        self.bind('<Configure>', self.on_tree_configure)
+        self.bind('<B1-Motion>', self.on_tree_scroll, add='+')
+        self.bind('<MouseWheel>', self.on_tree_scroll, add='+')
         
         # 키보드 네비게이션
         self.bind('<Up>', self.handle_key_navigation)
@@ -422,26 +427,55 @@ class TodoTree(ttk.Treeview):
         """진행률 바 위젯 생성"""
         try:
             # 진행률 바 위젯 생성
-            progress_widget = CompactProgressBar(self, progress=progress, width=80, height=14)
+            progress_widget = CompactProgressBar(self, progress=progress, width=100, height=16)
             
-            # 위젯을 트리뷰에 배치 (진행률 컬럼에)
-            bbox = self.bbox(node_id, 'progress')
-            if bbox:
-                x, y, width, height = bbox
-                # 위젯을 적절한 위치에 배치
-                progress_widget.place(x=x + 10, y=y + 2)
-                
-                # 위젯 참조 저장
-                self.progress_widgets[node_id] = progress_widget
+            # 위젯 참조 저장
+            self.progress_widgets[node_id] = progress_widget
+            
+            # 위젯 위치 조정을 위해 after_idle 사용
+            self.after_idle(lambda: self._position_progress_widget(node_id))
+            
         except Exception as e:
             # 위젯 생성 실패 시 로그 출력 (선택사항)
             print(f"진행률 위젯 생성 실패: {e}")
+    
+    def _position_progress_widget(self, node_id: str) -> None:
+        """진행률 바 위젯 위치 조정"""
+        if node_id not in self.progress_widgets:
+            return
+            
+        try:
+            progress_widget = self.progress_widgets[node_id]
+            
+            # 트리뷰 항목의 bbox 가져오기
+            bbox = self.bbox(node_id, 'progress')
+            if bbox:
+                x, y, width, height = bbox
+                
+                # 진행률 컬럼 중앙에 위젯 배치
+                widget_width = 100
+                widget_height = 16
+                
+                # 중앙 정렬을 위한 위치 계산
+                center_x = x + (width - widget_width) // 2
+                center_y = y + (height - widget_height) // 2
+                
+                # 위젯 배치
+                progress_widget.place(x=center_x, y=center_y)
+            else:
+                # bbox를 가져올 수 없으면 위젯 숨김
+                progress_widget.place_forget()
+                
+        except Exception as e:
+            print(f"진행률 위젯 위치 조정 실패: {e}")
     
     def _update_progress_widget(self, node_id: str, progress: float) -> None:
         """진행률 바 위젯 업데이트"""
         if node_id in self.progress_widgets:
             try:
                 self.progress_widgets[node_id].update_progress(progress)
+                # 위치 재조정
+                self.after_idle(lambda: self._position_progress_widget(node_id))
             except Exception as e:
                 print(f"진행률 위젯 업데이트 실패: {e}")
         else:
@@ -656,6 +690,24 @@ class TodoTree(ttk.Treeview):
         """할일 순서 변경 이벤트 처리"""
         # 메인 윈도우에서 구현
         pass
+    
+    def on_tree_configure(self, event) -> None:
+        """트리뷰 크기 변경 시 진행률 바 위치 재조정"""
+        if event.widget != self:
+            return
+        
+        # 모든 진행률 바 위치 재조정
+        self.after_idle(self._reposition_all_progress_widgets)
+    
+    def on_tree_scroll(self, event) -> None:
+        """트리뷰 스크롤 시 진행률 바 위치 재조정"""
+        # 스크롤 후 위치 재조정
+        self.after_idle(self._reposition_all_progress_widgets)
+    
+    def _reposition_all_progress_widgets(self) -> None:
+        """모든 진행률 바 위젯 위치 재조정"""
+        for node_id in list(self.progress_widgets.keys()):
+            self._position_progress_widget(node_id)
     
     def on_tree_open(self, event) -> None:
         """트리 노드 확장 이벤트 처리"""

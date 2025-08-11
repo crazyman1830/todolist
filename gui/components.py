@@ -370,7 +370,7 @@ class TodoProgressWidget(ttk.Frame):
 class CompactProgressBar(ttk.Frame):
     """트리뷰에서 사용할 수 있는 컴팩트한 진행률 표시 위젯"""
     
-    def __init__(self, parent, progress: float = 0.0, width: int = 80, height: int = 16, **kwargs):
+    def __init__(self, parent, progress: float = 0.0, width: int = 100, height: int = 16, **kwargs):
         super().__init__(parent, **kwargs)
         
         self.progress = progress
@@ -384,25 +384,25 @@ class CompactProgressBar(ttk.Frame):
         """UI 구성 요소 설정"""
         # 캔버스를 사용하여 커스텀 진행률 바 구현
         self.canvas = tk.Canvas(self, width=self.width, height=self.height, 
-                               highlightthickness=0, bd=0)
+                               highlightthickness=0, bd=0, bg='white')
         self.canvas.pack()
         
-        # 배경 사각형
+        # 배경 사각형 (둥근 모서리 효과)
         self.bg_rect = self.canvas.create_rectangle(
-            0, 0, self.width, self.height,
-            fill='lightgray', outline='gray', width=1
+            1, 1, self.width-1, self.height-1,
+            fill='#f0f0f0', outline='#d0d0d0', width=1
         )
         
         # 진행률 사각형
         self.progress_rect = self.canvas.create_rectangle(
-            0, 0, 0, self.height,
-            fill='red', outline=''
+            2, 2, 2, self.height-2,
+            fill='#e0e0e0', outline='', width=0
         )
         
         # 진행률 텍스트
         self.progress_text = self.canvas.create_text(
             self.width // 2, self.height // 2,
-            text="0%", fill='black', font=('Arial', 8)
+            text="0%", fill='#666666', font=('Arial', 8, 'bold')
         )
     
     def update_progress(self, progress: float) -> None:
@@ -413,32 +413,37 @@ class CompactProgressBar(ttk.Frame):
         self.progress = progress
         percentage = int(progress * 100)
         
-        # 진행률 바 너비 계산
-        progress_width = int(self.width * progress)
+        # 진행률 바 너비 계산 (여백 고려)
+        progress_width = max(2, int((self.width - 4) * progress) + 2)
         
         # 진행률 사각형 업데이트
-        self.canvas.coords(self.progress_rect, 0, 0, progress_width, self.height)
+        self.canvas.coords(self.progress_rect, 2, 2, progress_width, self.height-2)
         
-        # 진행률에 따른 색상 변경
+        # 진행률에 따른 색상 변경 (더 부드러운 색상)
         if progress == 0:
-            color = 'lightgray'
+            color = '#e0e0e0'
+            text_color = '#999999'
         elif progress < 0.34:
-            color = 'red'
+            color = '#ff6b6b'  # 부드러운 빨간색
+            text_color = 'white'
         elif progress < 0.67:
-            color = 'orange'
+            color = '#ffa726'  # 부드러운 주황색
+            text_color = 'white'
         elif progress < 1.0:
-            color = 'green'
+            color = '#66bb6a'  # 부드러운 초록색
+            text_color = 'white'
         else:
-            color = 'darkgreen'
+            color = '#4caf50'  # 완료 - 진한 초록색
+            text_color = 'white'
         
         self.canvas.itemconfig(self.progress_rect, fill=color)
         
         # 진행률 텍스트 업데이트
-        self.canvas.itemconfig(self.progress_text, text=f"{percentage}%")
+        self.canvas.itemconfig(self.progress_text, text=f"{percentage}%", fill=text_color)
         
-        # 텍스트 색상 조정 (진행률이 높을 때 가독성 향상)
-        text_color = 'white' if progress > 0.5 else 'black'
-        self.canvas.itemconfig(self.progress_text, fill=text_color)
+        # 진행률이 0%일 때는 텍스트를 회색으로
+        if progress == 0:
+            self.canvas.itemconfig(self.progress_text, fill='#999999')
     
     def get_progress(self) -> float:
         """현재 진행률 반환"""

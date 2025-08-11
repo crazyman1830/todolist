@@ -377,8 +377,8 @@ class MainWindow:
                 return
             
             # 기본 컬럼 너비 비율
-            title_ratio = 0.6  # 제목 컬럼 60%
-            progress_ratio = 0.2  # 진행률 컬럼 20%
+            title_ratio = 0.55  # 제목 컬럼 55%
+            progress_ratio = 0.25  # 진행률 컬럼 25% (진행률 바를 위해 더 넓게)
             date_ratio = 0.2  # 날짜 컬럼 20%
             
             # 사용 가능한 너비 (스크롤바 등 고려)
@@ -391,13 +391,16 @@ class MainWindow:
             
             # 최소 너비 보장
             title_width = max(title_width, 200)
-            progress_width = max(progress_width, 80)
+            progress_width = max(progress_width, 120)  # 진행률 바를 위해 최소 너비 증가
             date_width = max(date_width, 100)
             
             # 컬럼 너비 적용
             self.todo_tree.column('#0', width=title_width)
             self.todo_tree.column('progress', width=progress_width)
             self.todo_tree.column('created_at', width=date_width)
+            
+            # 진행률 바 위치 재조정
+            self.todo_tree.after_idle(self.todo_tree._reposition_all_progress_widgets)
             
         except Exception as e:
             print(f"트리 컬럼 조정 오류: {e}")
