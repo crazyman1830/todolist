@@ -91,6 +91,18 @@ class MainWindow:
         edit_menu.add_command(label="할일 삭제", command=self.on_delete_todo, accelerator="Del")
         edit_menu.add_separator()
         edit_menu.add_command(label="하위작업 추가", command=self.on_add_subtask, accelerator="Ctrl+Shift+N")
+        edit_menu.add_separator()
+        
+        # 날짜 설정 서브메뉴
+        date_menu = tk.Menu(edit_menu, tearoff=0)
+        edit_menu.add_cascade(label="목표 날짜", menu=date_menu)
+        date_menu.add_command(label="목표 날짜 설정...", command=self.on_set_due_date)
+        date_menu.add_separator()
+        date_menu.add_command(label="오늘로 설정", command=self._quick_set_due_date_today, accelerator="Ctrl+D")
+        date_menu.add_command(label="내일로 설정", command=self._quick_set_due_date_tomorrow, accelerator="Ctrl+Shift+D")
+        date_menu.add_command(label="이번 주말로 설정", command=self._quick_set_due_date_this_weekend, accelerator="Ctrl+Alt+D")
+        date_menu.add_separator()
+        date_menu.add_command(label="목표 날짜 제거", command=self._quick_remove_due_date, accelerator="Ctrl+R")
         
         # 보기 메뉴
         view_menu = tk.Menu(self.menubar, tearoff=0)
@@ -135,35 +147,53 @@ class MainWindow:
         self._setup_focus_chain()
         
     def setup_toolbar(self):
-        """툴바 구현 (추가, 수정, 삭제, 새로고침 버튼) - 접근성 및 툴팁 개선"""
+        """툴바 구현 - 할일 추가, 수정, 삭제, 목표날짜 수정, 하위작업 추가, 수정, 삭제, 목표날짜 수정, 새로고침, 폴더열기"""
         self.toolbar = ttk.Frame(self.root)
         self.toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         
-        # 툴바 버튼들 - 툴팁과 접근성 개선
-        self.btn_add = ttk.Button(self.toolbar, text="할일 추가", command=self.on_add_todo)
-        self.btn_add.pack(side=tk.LEFT, padx=2)
-        self._create_tooltip(self.btn_add, "새로운 할일을 추가합니다 (Ctrl+N)")
+        # === 할일 관련 버튼들 ===
+        self.btn_add_todo = ttk.Button(self.toolbar, text="할일 추가", command=self.on_add_todo)
+        self.btn_add_todo.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_add_todo, "새로운 할일을 추가합니다 (Ctrl+N)")
         
-        self.btn_edit = ttk.Button(self.toolbar, text="수정", command=self.on_edit_todo)
-        self.btn_edit.pack(side=tk.LEFT, padx=2)
-        self._create_tooltip(self.btn_edit, "선택된 할일을 수정합니다 (F2)")
+        self.btn_edit_todo = ttk.Button(self.toolbar, text="할일 수정", command=self.on_edit_todo)
+        self.btn_edit_todo.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_edit_todo, "선택된 할일을 수정합니다 (F2)")
         
-        self.btn_delete = ttk.Button(self.toolbar, text="삭제", command=self.on_delete_todo)
-        self.btn_delete.pack(side=tk.LEFT, padx=2)
-        self._create_tooltip(self.btn_delete, "선택된 할일을 삭제합니다 (Del)")
+        self.btn_delete_todo = ttk.Button(self.toolbar, text="할일 삭제", command=self.on_delete_todo)
+        self.btn_delete_todo.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_delete_todo, "선택된 할일을 삭제합니다 (Del)")
+        
+        self.btn_set_todo_due_date = ttk.Button(self.toolbar, text="할일 목표날짜", command=self.on_set_due_date)
+        self.btn_set_todo_due_date.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_set_todo_due_date, "선택된 할일의 목표날짜를 설정합니다")
         
         # 구분선
         separator1 = ttk.Separator(self.toolbar, orient=tk.VERTICAL)
         separator1.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
+        # === 하위작업 관련 버튼들 ===
         self.btn_add_subtask = ttk.Button(self.toolbar, text="하위작업 추가", command=self.on_add_subtask)
         self.btn_add_subtask.pack(side=tk.LEFT, padx=2)
         self._create_tooltip(self.btn_add_subtask, "선택된 할일에 하위작업을 추가합니다 (Ctrl+Shift+N)")
+        
+        self.btn_edit_subtask = ttk.Button(self.toolbar, text="하위작업 수정", command=self.on_edit_subtask)
+        self.btn_edit_subtask.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_edit_subtask, "선택된 하위작업을 수정합니다")
+        
+        self.btn_delete_subtask = ttk.Button(self.toolbar, text="하위작업 삭제", command=self.on_delete_subtask)
+        self.btn_delete_subtask.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_delete_subtask, "선택된 하위작업을 삭제합니다")
+        
+        self.btn_set_subtask_due_date = ttk.Button(self.toolbar, text="하위작업 목표날짜", command=self.on_set_subtask_due_date)
+        self.btn_set_subtask_due_date.pack(side=tk.LEFT, padx=2)
+        self._create_tooltip(self.btn_set_subtask_due_date, "선택된 하위작업의 목표날짜를 설정합니다")
         
         # 구분선
         separator2 = ttk.Separator(self.toolbar, orient=tk.VERTICAL)
         separator2.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
+        # === 기타 기능 버튼들 ===
         self.btn_refresh = ttk.Button(self.toolbar, text="새로고침", command=self.on_refresh)
         self.btn_refresh.pack(side=tk.LEFT, padx=2)
         self._create_tooltip(self.btn_refresh, "할일 목록을 새로고침합니다 (F5)")
@@ -172,7 +202,7 @@ class MainWindow:
         self.btn_open_folder.pack(side=tk.LEFT, padx=2)
         self._create_tooltip(self.btn_open_folder, "선택된 할일의 폴더를 엽니다")
         
-        # 검색 박스 (오른쪽 정렬) - 컴포넌트 사용
+        # 검색 박스 (오른쪽 정렬)
         self.search_box = SearchBox(self.toolbar, self.on_search)
         self.search_box.pack(side=tk.RIGHT, padx=5)
         self._create_tooltip(self.search_box, "할일을 검색합니다 (실시간 검색)")
@@ -782,6 +812,20 @@ class MainWindow:
         """
         
         show_info_dialog(self.root, help_text, "접근성 도움말")
+    
+    def on_set_due_date(self):
+        """할일 목표 날짜 설정 이벤트 핸들러"""
+        try:
+            self.todo_tree.on_set_due_date()
+        except Exception as e:
+            show_error_dialog(self.root, f"목표 날짜 설정 중 오류가 발생했습니다: {str(e)}")
+    
+    def on_set_subtask_due_date(self):
+        """하위작업 목표 날짜 설정 이벤트 핸들러"""
+        try:
+            self.todo_tree.on_set_subtask_due_date()
+        except Exception as e:
+            show_error_dialog(self.root, f"하위작업 목표 날짜 설정 중 오류가 발생했습니다: {str(e)}")
     
     # 이벤트 핸들러들
     def on_add_todo(self):

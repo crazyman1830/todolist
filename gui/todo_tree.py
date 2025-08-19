@@ -6,7 +6,7 @@ from services.todo_service import TodoService
 from models.todo import Todo
 from models.subtask import SubTask
 from gui.components import CompactProgressBar
-from utils.performance_utils import get_performance_optimizer, optimized_realtime_update
+from utils.performance_utils import get_performance_optimizer
 
 
 class TodoTree(ttk.Treeview):
@@ -40,10 +40,10 @@ class TodoTree(ttk.Treeview):
         """실시간 업데이트 설정"""
         # 실시간 업데이트 콜백 등록
         self.performance_optimizer.realtime_optimizer.register_update_callback(
-            'todo_tree_urgency', self._update_urgency_display
+            'todo_tree_urgency', lambda: self._update_urgency_display()
         )
         self.performance_optimizer.realtime_optimizer.register_update_callback(
-            'todo_tree_time', self._update_time_display
+            'todo_tree_time', lambda: self._update_time_display()
         )
         
         # 주기적 업데이트 시작
@@ -63,7 +63,6 @@ class TodoTree(ttk.Treeview):
         """긴급도 업데이트 요청"""
         self.performance_optimizer.realtime_optimizer.request_update('todo_tree_urgency')
     
-    @optimized_realtime_update('todo_tree_urgency')
     def _update_urgency_display(self) -> None:
         """긴급도 표시 업데이트"""
         try:
@@ -84,7 +83,6 @@ class TodoTree(ttk.Treeview):
         except Exception as e:
             print(f"긴급도 표시 업데이트 실패: {e}")
     
-    @optimized_realtime_update('todo_tree_time')
     def _update_time_display(self) -> None:
         """시간 표시 업데이트"""
         try:
@@ -1089,7 +1087,7 @@ class TodoTree(ttk.Treeview):
         for item_id in self.get_children():
             collapse_recursive(item_id)
     
-    # 외부에서 호출할 이벤트 핸들러들 (실제 구현은 메인 윈도우에서)
+    # 컨텍스트 메뉴에서 호출되는 이벤트 핸들러들
     def on_edit_todo(self) -> None:
         """할일 수정 - 메인 윈도우에서 구현"""
         if hasattr(self, '_on_edit_todo_callback') and self._on_edit_todo_callback:
@@ -1126,9 +1124,26 @@ class TodoTree(ttk.Treeview):
             self._on_add_new_todo_callback()
     
     def on_refresh(self) -> None:
-        """새로고침 - 메인 윈도우에서 구현"""
-        if hasattr(self, '_on_refresh_callback') and self._on_refresh_callback:
-            self._on_refresh_callback()
+        """새로고침"""
+        self.refresh_tree()
+    
+    def expand_all(self) -> None:
+        """모든 노드 확장"""
+        for item_id in self.get_children():
+            self.item(item_id, open=True)
+            # 확장 상태 저장
+            if item_id in self.node_data and self.node_data[item_id]['type'] == 'todo':
+                todo_id = self.node_data[item_id]['todo_id']
+                self.todo_service.update_todo_expansion_state(todo_id, True)
+    
+    def collapse_all(self) -> None:
+        """모든 노드 축소"""
+        for item_id in self.get_children():
+            self.item(item_id, open=False)
+            # 축소 상태 저장
+            if item_id in self.node_data and self.node_data[item_id]['type'] == 'todo':
+                todo_id = self.node_data[item_id]['todo_id']
+                self.todo_service.update_todo_expansion_state(todo_id, False)
         else:
             # 콜백이 없는 경우 기본 새로고침 수행
             self.refresh_tree()
@@ -1154,7 +1169,11 @@ class TodoTree(ttk.Treeview):
                 item_type="할일"
             )
             
-            if dialog.result:
+            # 다이얼로그가 닫힐 때까지 대기
+            self.wait_window(dialog)
+            
+            # 사용자가 확인을 눌렀는지 확인
+            if hasattr(dialog, 'result') and dialog.result is not None:
                 # 목표 날짜 설정
                 success = self.todo_service.set_todo_due_date(todo.id, dialog.result)
                 if success:
@@ -1221,7 +1240,11 @@ class TodoTree(ttk.Treeview):
                 item_type="하위작업"
             )
             
-            if dialog.result:
+            # 다이얼로그가 닫힐 때까지 대기
+            self.wait_window(dialog)
+            
+            # 사용자가 확인을 눌렀는지 확인
+            if hasattr(dialog, 'result') and dialog.result is not None:
                 # 목표 날짜 설정
                 success = self.todo_service.set_subtask_due_date(subtask.todo_id, subtask.id, dialog.result)
                 if success:
@@ -1337,57 +1360,7 @@ class TodoTree(ttk.Treeview):
             if todo.id in self.todo_nodes:
                 node_id = self.todo_nodes[todo.id]
                 self.item(node_id, open=todo.is_expanded)
-    
-    # 컨텍스트 메뉴에서 참조되는 메서드들 (메인 윈도우에서 구현되어야 함)
-    def on_edit_todo(self) -> None:
-        """할일 수정 - 메인 윈도우에서 구현"""
-        self.event_generate('<<EditTodo>>')
-    
-    def on_delete_todo(self) -> None:
-        """할일 삭제 - 메인 윈도우에서 구현"""
-        self.event_generate('<<DeleteTodo>>')
-    
-    def on_add_subtask(self) -> None:
-        """하위작업 추가 - 메인 윈도우에서 구현"""
-        self.event_generate('<<AddSubtask>>')
-    
-    def on_edit_subtask(self) -> None:
-        """하위작업 수정 - 메인 윈도우에서 구현"""
-        self.event_generate('<<EditSubtask>>')
-    
-    def on_delete_subtask(self) -> None:
-        """하위작업 삭제 - 메인 윈도우에서 구현"""
-        self.event_generate('<<DeleteSubtask>>')
-    
-    def on_open_folder(self) -> None:
-        """폴더 열기 - 메인 윈도우에서 구현"""
-        self.event_generate('<<OpenFolder>>')
-    
-    def on_refresh(self) -> None:
-        """새로고침"""
-        self.refresh_tree()
-    
-    def on_add_new_todo(self) -> None:
-        """새 할일 추가 - 메인 윈도우에서 구현"""
-        self.event_generate('<<AddNewTodo>>')
-    
-    def expand_all(self) -> None:
-        """모든 노드 확장"""
-        for item_id in self.get_children():
-            self.item(item_id, open=True)
-            # 확장 상태 저장
-            if item_id in self.node_data and self.node_data[item_id]['type'] == 'todo':
-                todo_id = self.node_data[item_id]['todo_id']
-                self.todo_service.update_todo_expansion_state(todo_id, True)
-    
-    def collapse_all(self) -> None:
-        """모든 노드 축소"""
-        for item_id in self.get_children():
-            self.item(item_id, open=False)
-            # 축소 상태 저장
-            if item_id in self.node_data and self.node_data[item_id]['type'] == 'todo':
-                todo_id = self.node_data[item_id]['todo_id']
-                self.todo_service.update_todo_expansion_state(todo_id, False)
+
     
     # 접근성 개선 메서드들
     def _move_todo_up(self):

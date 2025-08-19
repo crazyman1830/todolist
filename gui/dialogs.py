@@ -14,6 +14,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 import calendar
 from services.date_service import DateService
+from gui.components import DateTimeWidget
 
 
 class BaseDialog(tk.Toplevel):
@@ -276,7 +277,7 @@ class EditTodoDialog(BaseDialog):
         self.title_var = tk.StringVar(value=current_title)
         self.has_due_date_var = tk.BooleanVar(value=current_due_date is not None)
         self.due_date = current_due_date
-        super().__init__(parent, "할일 수정", 500, 320)
+        super().__init__(parent, "할일 수정", 500, 450)
     
     def setup_ui(self):
         """Setup the edit todo dialog UI."""
@@ -293,6 +294,10 @@ class EditTodoDialog(BaseDialog):
         # Due date section
         self.setup_due_date_section(main_frame)
         
+        # Warning label for validation messages
+        self.warning_label = ttk.Label(main_frame, text="", foreground="red")
+        self.warning_label.pack(anchor=tk.W, pady=(5, 0))
+        
         # Instructions
         instruction_label = ttk.Label(
             main_frame, 
@@ -303,10 +308,13 @@ class EditTodoDialog(BaseDialog):
         
         # Buttons
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
         
-        ttk.Button(button_frame, text="취소", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="수정", command=self.on_ok).pack(side=tk.RIGHT)
+        cancel_btn = ttk.Button(button_frame, text="취소", command=self.on_cancel, width=12)
+        cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        ok_btn = ttk.Button(button_frame, text="수정", command=self.on_ok, width=12)
+        ok_btn.pack(side=tk.RIGHT)
     
     def focus_first_input(self):
         """Focus on the title entry and select all text."""
@@ -363,7 +371,29 @@ class EditTodoDialog(BaseDialog):
         
         # Date/time widget
         self.datetime_widget = DateTimeWidget(due_date_frame, self.current_due_date)
-        self.datetime_widget.pack(fill=tk.X)
+        self.datetime_widget.pack(fill=tk.X, pady=(0, 10))
+        
+        # Quick date selection buttons
+        self.quick_frame = ttk.Frame(due_date_frame)
+        self.quick_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(self.quick_frame, text="빠른 선택:", font=('TkDefaultFont', 8)).pack(anchor=tk.W)
+        
+        button_frame = ttk.Frame(self.quick_frame)
+        button_frame.pack(fill=tk.X, pady=(2, 0))
+        
+        # Quick date buttons
+        quick_dates = [
+            ("오늘", 0),
+            ("내일", 1), 
+            ("모레", 2),
+            ("1주일 후", 7)
+        ]
+        
+        for text, days in quick_dates:
+            btn = ttk.Button(button_frame, text=text, 
+                           command=lambda d=days: self.set_quick_date(d))
+            btn.pack(side=tk.LEFT, padx=(0, 5))
         
         # Update initial state
         self.update_due_date_state()
@@ -372,26 +402,48 @@ class EditTodoDialog(BaseDialog):
         """Handle due date checkbox toggle."""
         self.update_due_date_state()
     
+    def set_quick_date(self, days_from_now: int):
+        """Set a quick date selection."""
+        if not self.has_due_date_var.get():
+            self.has_due_date_var.set(True)
+            self.update_due_date_state()
+        
+        target_date = datetime.now() + timedelta(days=days_from_now)
+        # Set time to 6 PM if it's today or future dates
+        if days_from_now >= 0:
+            target_date = target_date.replace(hour=18, minute=0, second=0, microsecond=0)
+        
+        self.datetime_widget.set_datetime(target_date)
+    
     def update_due_date_state(self):
         """Update the state of due date widgets."""
         enabled = self.has_due_date_var.get()
         state = "normal" if enabled else "disabled"
         
-        # Update datetime widget state
-        for child in self.datetime_widget.winfo_children():
-            if hasattr(child, 'configure'):
-                try:
-                    child.configure(state=state)
-                except tk.TclError:
-                    pass
-            # Handle nested frames
-            if isinstance(child, ttk.Frame):
-                for grandchild in child.winfo_children():
-                    if hasattr(grandchild, 'configure'):
-                        try:
-                            grandchild.configure(state=state)
-                        except tk.TclError:
-                            pass
+        # Update datetime widget state (check if it exists first)
+        if hasattr(self, 'datetime_widget') and self.datetime_widget:
+            for child in self.datetime_widget.winfo_children():
+                if hasattr(child, 'configure'):
+                    try:
+                        child.configure(state=state)
+                    except tk.TclError:
+                        pass
+                # Handle nested frames
+                if isinstance(child, ttk.Frame):
+                    for grandchild in child.winfo_children():
+                        if hasattr(grandchild, 'configure'):
+                            try:
+                                grandchild.configure(state=state)
+                            except tk.TclError:
+                                pass
+        
+        # Update quick date buttons state
+        if hasattr(self, 'quick_frame'):
+            for widget in self.quick_frame.winfo_children():
+                if isinstance(widget, ttk.Frame):
+                    for button in widget.winfo_children():
+                        if isinstance(button, ttk.Button):
+                            button.configure(state=state)
     
     def get_result(self) -> Optional[dict]:
         """Get the dialog result with title and due date changes."""
@@ -424,7 +476,7 @@ class AddSubtaskDialog(BaseDialog):
         self.subtask_var = tk.StringVar()
         self.has_due_date_var = tk.BooleanVar(value=False)
         self.due_date = None
-        super().__init__(parent, "하위작업 추가", 500, 380)
+        super().__init__(parent, "하위작업 추가", 500, 450)
     
     def setup_ui(self):
         """Setup the add subtask dialog UI."""
@@ -480,10 +532,13 @@ class AddSubtaskDialog(BaseDialog):
         
         # Buttons
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
         
-        ttk.Button(button_frame, text="취소", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="추가", command=self.on_ok).pack(side=tk.RIGHT)
+        cancel_btn = ttk.Button(button_frame, text="취소", command=self.on_cancel, width=12)
+        cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        add_btn = ttk.Button(button_frame, text="추가", command=self.on_ok, width=12)
+        add_btn.pack(side=tk.RIGHT)
     
     def focus_first_input(self):
         """Focus on the subtask entry."""
@@ -506,7 +561,29 @@ class AddSubtaskDialog(BaseDialog):
         
         # Date/time widget
         self.datetime_widget = DateTimeWidget(due_date_frame)
-        self.datetime_widget.pack(fill=tk.X)
+        self.datetime_widget.pack(fill=tk.X, pady=(0, 10))
+        
+        # Quick date selection buttons
+        self.quick_frame = ttk.Frame(due_date_frame)
+        self.quick_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(self.quick_frame, text="빠른 선택:", font=('TkDefaultFont', 8)).pack(anchor=tk.W)
+        
+        button_frame = ttk.Frame(self.quick_frame)
+        button_frame.pack(fill=tk.X, pady=(2, 0))
+        
+        # Quick date buttons (considering parent due date)
+        quick_dates = [
+            ("오늘", 0),
+            ("내일", 1), 
+            ("모레", 2),
+            ("1주일 후", 7)
+        ]
+        
+        for text, days in quick_dates:
+            btn = ttk.Button(button_frame, text=text, 
+                           command=lambda d=days: self.set_quick_date(d))
+            btn.pack(side=tk.LEFT, padx=(0, 5))
         
         # Initially disable the datetime widget
         self.update_due_date_state()
@@ -514,6 +591,25 @@ class AddSubtaskDialog(BaseDialog):
     def on_due_date_toggle(self):
         """Handle due date checkbox toggle."""
         self.update_due_date_state()
+        self.validate_due_date()
+    
+    def set_quick_date(self, days_from_now: int):
+        """Set a quick date selection for subtask."""
+        if not self.has_due_date_var.get():
+            self.has_due_date_var.set(True)
+            self.update_due_date_state()
+        
+        target_date = datetime.now() + timedelta(days=days_from_now)
+        # Set time to 6 PM if it's today or future dates
+        if days_from_now >= 0:
+            target_date = target_date.replace(hour=18, minute=0, second=0, microsecond=0)
+        
+        # Check if target date exceeds parent due date
+        if self.parent_due_date and target_date > self.parent_due_date:
+            # Set to parent due date instead
+            target_date = self.parent_due_date
+        
+        self.datetime_widget.set_datetime(target_date)
         self.validate_due_date()
     
     def update_due_date_state(self):
@@ -536,6 +632,14 @@ class AddSubtaskDialog(BaseDialog):
                             grandchild.configure(state=state)
                         except tk.TclError:
                             pass
+        
+        # Update quick date buttons state
+        if hasattr(self, 'quick_frame'):
+            for widget in self.quick_frame.winfo_children():
+                if isinstance(widget, ttk.Frame):
+                    for button in widget.winfo_children():
+                        if isinstance(button, ttk.Button):
+                            button.configure(state=state)
     
     def validate_due_date(self):
         """Validate subtask due date against parent due date."""
@@ -586,6 +690,247 @@ class AddSubtaskDialog(BaseDialog):
         return {
             'title': title,
             'due_date': due_date
+        }
+
+
+class EditSubtaskDialog(BaseDialog):
+    """Dialog for editing existing subtasks."""
+    
+    def __init__(self, parent, current_title: str, todo_title: str, 
+                 current_due_date: Optional[datetime] = None, 
+                 parent_due_date: Optional[datetime] = None):
+        self.current_title = current_title
+        self.todo_title = todo_title
+        self.current_due_date = current_due_date
+        self.parent_due_date = parent_due_date
+        self.subtask_var = tk.StringVar(value=current_title)
+        self.has_due_date_var = tk.BooleanVar(value=current_due_date is not None)
+        self.due_date = current_due_date
+        super().__init__(parent, "하위작업 수정", 500, 450)
+    
+    def setup_ui(self):
+        """Setup the edit subtask dialog UI."""
+        main_frame = ttk.Frame(self, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Todo title display
+        todo_label = ttk.Label(main_frame, text="할일:")
+        todo_label.pack(anchor=tk.W, pady=(0, 2))
+        
+        todo_title_label = ttk.Label(
+            main_frame, 
+            text=self.todo_title, 
+            foreground="blue",
+            font=("TkDefaultFont", 9, "bold")
+        )
+        todo_title_label.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Parent due date display if exists
+        if self.parent_due_date:
+            parent_due_label = ttk.Label(
+                main_frame,
+                text=f"상위 할일 목표 날짜: {DateService.format_due_date(self.parent_due_date, 'absolute')}",
+                foreground="gray",
+                font=("TkDefaultFont", 8)
+            )
+            parent_due_label.pack(anchor=tk.W, pady=(0, 15))
+        else:
+            # Add some spacing
+            ttk.Label(main_frame, text="").pack(pady=(0, 5))
+        
+        # Subtask input
+        subtask_label = ttk.Label(main_frame, text="하위작업 내용:")
+        subtask_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        self.subtask_entry = ttk.Entry(main_frame, textvariable=self.subtask_var, width=50)
+        self.subtask_entry.pack(fill=tk.X, pady=(0, 10))
+        
+        # Due date section
+        self.setup_due_date_section(main_frame)
+        
+        # Warning label for due date validation
+        self.warning_label = ttk.Label(main_frame, text="", foreground="red")
+        self.warning_label.pack(anchor=tk.W, pady=(5, 0))
+        
+        # Instructions
+        instruction_label = ttk.Label(
+            main_frame, 
+            text="• 하위작업 내용을 수정하세요 (1-200자)\n• 체크박스로 완료 상태를 관리할 수 있습니다\n• 하위작업 목표 날짜는 상위 할일보다 늦을 수 없습니다",
+            foreground="gray"
+        )
+        instruction_label.pack(anchor=tk.W, pady=(0, 15))
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        cancel_btn = ttk.Button(button_frame, text="취소", command=self.on_cancel, width=12)
+        cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        edit_btn = ttk.Button(button_frame, text="수정", command=self.on_ok, width=12)
+        edit_btn.pack(side=tk.RIGHT)
+    
+    def focus_first_input(self):
+        """Focus on the subtask entry and select all text."""
+        self.subtask_entry.focus_set()
+        self.subtask_entry.select_range(0, tk.END)
+    
+    def setup_due_date_section(self, parent):
+        """Setup the due date selection section."""
+        # Due date frame
+        due_date_frame = ttk.LabelFrame(parent, text="목표 날짜", padding="10")
+        due_date_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Due date checkbox
+        self.due_date_checkbox = ttk.Checkbutton(
+            due_date_frame,
+            text="목표 날짜 설정",
+            variable=self.has_due_date_var,
+            command=self.on_due_date_toggle
+        )
+        self.due_date_checkbox.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Date/time widget
+        self.datetime_widget = DateTimeWidget(due_date_frame, self.current_due_date)
+        self.datetime_widget.pack(fill=tk.X, pady=(0, 10))
+        
+        # Quick date selection buttons
+        self.quick_frame = ttk.Frame(due_date_frame)
+        self.quick_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(self.quick_frame, text="빠른 선택:", font=('TkDefaultFont', 8)).pack(anchor=tk.W)
+        
+        button_frame = ttk.Frame(self.quick_frame)
+        button_frame.pack(fill=tk.X, pady=(2, 0))
+        
+        # Quick date buttons (considering parent due date)
+        quick_dates = [
+            ("오늘", 0),
+            ("내일", 1), 
+            ("모레", 2),
+            ("1주일 후", 7)
+        ]
+        
+        for text, days in quick_dates:
+            btn = ttk.Button(button_frame, text=text, 
+                           command=lambda d=days: self.set_quick_date(d))
+            btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Update initial state
+        self.update_due_date_state()
+    
+    def on_due_date_toggle(self):
+        """Handle due date checkbox toggle."""
+        self.update_due_date_state()
+        self.validate_due_date()
+    
+    def set_quick_date(self, days_from_now: int):
+        """Set a quick date selection for subtask."""
+        if not self.has_due_date_var.get():
+            self.has_due_date_var.set(True)
+            self.update_due_date_state()
+        
+        target_date = datetime.now() + timedelta(days=days_from_now)
+        # Set time to 6 PM if it's today or future dates
+        if days_from_now >= 0:
+            target_date = target_date.replace(hour=18, minute=0, second=0, microsecond=0)
+        
+        # Check if target date exceeds parent due date
+        if self.parent_due_date and target_date > self.parent_due_date:
+            # Set to parent due date instead
+            target_date = self.parent_due_date
+        
+        self.datetime_widget.set_datetime(target_date)
+        self.validate_due_date()
+    
+    def update_due_date_state(self):
+        """Update the state of due date widgets."""
+        enabled = self.has_due_date_var.get()
+        state = "normal" if enabled else "disabled"
+        
+        # Update datetime widget state
+        if hasattr(self, 'datetime_widget') and self.datetime_widget:
+            for child in self.datetime_widget.winfo_children():
+                if hasattr(child, 'configure'):
+                    try:
+                        child.configure(state=state)
+                    except tk.TclError:
+                        pass
+                # Handle nested frames
+                if isinstance(child, ttk.Frame):
+                    for grandchild in child.winfo_children():
+                        if hasattr(grandchild, 'configure'):
+                            try:
+                                grandchild.configure(state=state)
+                            except tk.TclError:
+                                pass
+        
+        # Update quick date buttons state
+        if hasattr(self, 'quick_frame'):
+            for widget in self.quick_frame.winfo_children():
+                if isinstance(widget, ttk.Frame):
+                    for button in widget.winfo_children():
+                        if isinstance(button, ttk.Button):
+                            button.configure(state=state)
+    
+    def validate_due_date(self):
+        """Validate subtask due date against parent due date."""
+        self.warning_label.config(text="")
+        
+        if not self.has_due_date_var.get() or not self.parent_due_date:
+            return True
+        
+        subtask_due_date = self.datetime_widget.get_datetime()
+        if subtask_due_date and subtask_due_date > self.parent_due_date:
+            warning_text = f"경고: 하위작업 목표 날짜가 상위 할일 목표 날짜({DateService.format_due_date(self.parent_due_date, 'absolute')})보다 늦습니다."
+            self.warning_label.config(text=warning_text)
+            return False
+        
+        return True
+    
+    def validate_input(self) -> bool:
+        """Validate the subtask input."""
+        subtask_title = self.subtask_var.get().strip()
+        
+        if not subtask_title:
+            self.show_error("하위작업 내용을 입력해주세요.")
+            self.subtask_entry.focus_set()
+            return False
+        
+        if len(subtask_title) > 200:
+            self.show_error("하위작업 내용은 200자를 초과할 수 없습니다.")
+            self.subtask_entry.focus_set()
+            return False
+        
+        # Validate due date if set
+        if self.has_due_date_var.get() and self.parent_due_date:
+            subtask_due_date = self.datetime_widget.get_datetime()
+            if subtask_due_date and subtask_due_date > self.parent_due_date:
+                self.show_error("하위작업의 목표 날짜는 상위 할일의 목표 날짜보다 늦을 수 없습니다.")
+                return False
+        
+        return True
+    
+    def get_result(self) -> Optional[dict]:
+        """Get the dialog result with subtask title and due date changes."""
+        new_title = self.subtask_var.get().strip()
+        new_due_date = None
+        
+        if self.has_due_date_var.get():
+            new_due_date = self.datetime_widget.get_datetime()
+        
+        # Check if anything changed
+        title_changed = new_title != self.current_title
+        due_date_changed = new_due_date != self.current_due_date
+        
+        if not title_changed and not due_date_changed:
+            return None  # No changes made
+        
+        return {
+            'title': new_title,
+            'due_date': new_due_date,
+            'title_changed': title_changed,
+            'due_date_changed': due_date_changed
         }
 
 
@@ -695,7 +1040,7 @@ class DueDateDialog(BaseDialog):
         self.minute_spinbox = None
         self.warning_label = None
         
-        super().__init__(parent, f"{item_type} 목표 날짜 설정", 600, 500)
+        super().__init__(parent, f"{item_type} 목표 날짜 설정", 600, 580)
         
         # 스타일 설정
         self.setup_styles()
@@ -747,11 +1092,11 @@ class DueDateDialog(BaseDialog):
         # 경고 메시지 레이블
         self.setup_warning_label(main_frame)
         
-        # 버튼들
-        self.setup_buttons(main_frame)
-        
         # 초기 상태 업데이트
         self.update_ui_state()
+        
+        # 버튼들 (맨 마지막에 추가하여 확실히 보이도록)
+        self.setup_buttons(main_frame)
     
     def setup_due_date_checkbox(self, parent):
         """목표 날짜 사용 여부 체크박스 설정"""
@@ -942,10 +1287,14 @@ class DueDateDialog(BaseDialog):
     def setup_buttons(self, parent):
         """버튼들 설정"""
         button_frame = ttk.Frame(parent)
-        button_frame.pack(fill=tk.X, pady=(15, 0))
+        button_frame.pack(fill=tk.X, pady=(20, 10), side=tk.BOTTOM)
         
-        ttk.Button(button_frame, text="취소", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="확인", command=self.on_ok).pack(side=tk.RIGHT)
+        # 버튼들을 더 크게 만들고 명확하게 배치
+        cancel_btn = ttk.Button(button_frame, text="취소", command=self.on_cancel, width=12)
+        cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        ok_btn = ttk.Button(button_frame, text="확인", command=self.on_ok, width=12)
+        ok_btn.pack(side=tk.RIGHT)
     
     def update_calendar(self):
         """달력 표시 업데이트"""
