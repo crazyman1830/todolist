@@ -69,11 +69,15 @@
 
 3. **테스트 실행**
    ```cmd
-   # Windows
+   # Windows - 대화형 테스트 메뉴
    run_tests.bat
    
+   # 성능 테스트 전용
+   run_performance_test.bat
+   
    # 직접 실행
-   python test/run_all_tests.py
+   python test/run_all_tests_organized.py     # 전체 테스트 (권장)
+   python test/final_system_verification.py   # 최종 시스템 검증
    ```
 
 4. **데모 실행**
@@ -81,11 +85,14 @@
    # Windows - 대화형 데모 메뉴
    run_demo.bat
    
+   # 목표 날짜 기능 전용 데모
+   run_due_date_demo.bat
+   
    # 직접 실행
-   python demo/demo_gui.py                    # GUI 데모 (권장)
-   python demo/demo_auto_save_backup.py       # 자동 저장 백업 데모
-   python demo/demo_progress_components.py    # 진행률 컴포넌트 데모
-   python demo/demo_todo_tree.py             # 할일 트리 구조 데모
+   python demo/gui/demo_main_gui.py           # 메인 GUI 데모 (권장)
+   python demo/features/demo_due_date_features.py  # 목표 날짜 기능 데모
+   python demo/integration/demo_startup_notification_integration.py  # 시작 알림 데모
+   python demo/performance/demo_performance_optimization.py  # 성능 최적화 데모
    ```
    
    자세한 데모 사용법은 `docs/DEMO_GUIDE.md`를 참조하세요.
@@ -178,7 +185,12 @@ todolist/
 │   └── ...
 ├── .kiro/                 # Kiro IDE 설정
 │   └── specs/            # 프로젝트 스펙
-└── run_*.bat             # Windows 실행 스크립트들
+├── run_todo_gui.bat      # GUI 버전 실행 스크립트
+├── run_todo_console.bat   # 콘솔 버전 실행 스크립트
+├── run_tests.bat          # 테스트 실행 스크립트 (대화형)
+├── run_demo.bat           # 데모 실행 스크립트 (대화형)
+├── run_due_date_demo.bat  # 목표 날짜 기능 데모 전용
+└── run_performance_test.bat # 성능 테스트 전용
 ```
 
 ## 🎯 사용법
