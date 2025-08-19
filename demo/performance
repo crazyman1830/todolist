@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""
+성능 최적화 및 메모리 관리 기능 데모
+
+이 스크립트는 다음 기능들을 시연합니다:
+1. 긴급도 계산 캐싱
+2. 배치 업데이트 처리
+3. 실시간 업데이트 최적화
+4. 메모리 사용량 모니터링
+"""
+
+import sys
+import os
+import time
+import threading
+from datetime import datetime, timedelta
+
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.performance_utils import (
+    PerformanceOptimizer, UrgencyCache, BatchUpdateManager, 
+    RealTimeUpdateOptimizer, MemoryMonitor, get_performance_optimizer
+)
+from services.date_service import DateService
+
+
+def demo_urgency_cache():
+    """긴급도 계산 캐싱 데모"""
+    print("=== 긴급도 계산 캐싱 데모 ===")
+    
+    cache = UrgencyCache(max_size=100, ttl_seconds=30)
+    
+    # 테스트 날짜들
+    test_dates = [
+        datetime.now() + timedelta(hours=1),    # 1시간 후 (urgent)
+        datetime.now() + timedelta(days=1),     # 1일 후 (warning)
+        datetime.now() + timedelta(days=5),     # 5일 후 (normal)
+        datetime.now() - timedelta(hours=2),    # 2시간 전 (overdue)
+        None                                    # 목표 날짜 없음 (normal)
+    ]
+    
+    print("첫 번째 계산 (캐시 미스):")
+    start_time = time.time()
+    for i, due_date in enumerate(test_dates):
+        urgency = DateService.get_urgency_level(due_date)
+        print(f"  날짜 {i+1}: {urgency}")
+    first_time = time.time() - start_time
+    
+    print(f"\n두 번째 계산 (캐시 히트):")
+    start_time = time.time()
+    for i, due_date in enumerate(test_dates):
+        urgency = DateService.get_urgency_level(due_date)
+        print(f"  날짜 {i+1}: {urgency}")
+    second_time = time.time() - start_time
+    
+    print(f"\n성능 개선:")
+    print(f"  첫 번째: {first_time:.4f}초")
+    print(f"  두 번째: {second_time:.4f}초")
+    print(f"  개선율: {((first_time - second_time) / first_time * 100):.1f}%")
+    
+    # 캐시 통계
+    stats = cache.get_stats()
+    print(f"\n캐시 통계:")
+    print(f"  크기: {stats['size']}/{stats['max_size']}")
+    print(f"  TTL: {stats['ttl_seconds']}초")
+
+
+def demo_batch_update():
+    """배치 업데이트 데모"""
+    print("\n=== 배치 업데이트 데모 ===")
+    
+    batch_manager = BatchUpdateManager(batch_size=5, flush_interval=2.0)
+    
+    # 업데이트 처리 함수
+    def process_todo_updates(updates):
+        print(f"배치 처리: {len(updates)}개 할일 업데이트")
+        for update in updates:
+            print(f"  - 할일 {update['item_id']}: {update['data']}")
+    
+    def process_subtask_updates(updates):
+        print(f"배치 처리: {len(updates)}개 하위작업 업데이트")
+        for update in updates:
+            print(f"  - 하위작업 {update['item_id']}: {update['data']}")
+    
+    # 콜백 등록
+    batch_manager.register_update_callback('todo_update', process_todo_updates)
+    batch_manager.register_update_callback('subtask_update', process_subtask_updates)
+    
+    print("개별 업데이트 요청 (배치로 처리됨):")
+    
+    # 할일 업데이트 요청
+    for i in range(3):
+        batch_manager.queue_update('todo_update', i+1, {'title': f'할일 {i+1} 수정'})
+        print(f"  할일 {i+1} 업데이트 요청")
+        time.sleep(0.1)
+    
+    # 하위작업 업데이트 요청
+    for i in range(4):
+        batch_manager.queue_update('subtask_update', i+1, {'completed': True})
+        print(f"  하위작업 {i+1} 업데이트 요청")
+        time.sleep(0.1)
+    
+    print("\n배치 크기 도달로 자동 플러시 대기...")
+    time.sleep(1)
+    
+    # 남은 업데이트 강제 플러시
+    print("\n강제 플러시:")
+    batch_manager.force_flush()
+    
+    batch_manager.shutdown()
+
+
+def demo_realtime_update():
+    """실시간 업데이트 최적화 데모"""
+    print("\n=== 실시간 업데이트 최적화 데모 ===")
+    
+    optimizer = RealTimeUpdateOptimizer(update_interval=1.0, max_updates_per_second=5)
+    
+    # 업데이트 카운터
+    update_counts = {'ui': 0, 'status': 0}
+    
+    def update_ui():
+        update_counts['ui'] += 1
+        print(f"UI 업데이트 #{update_counts['ui']} - {datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
+    
+    def update_status():
+        update_counts['status'] += 1
+        print(f"상태 업데이트 #{update_counts['status']} - {datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
+    
+    # 콜백 등록
+    optimizer.register_update_callback('ui', update_ui)
+    optimizer.register_update_callback('status', update_status)
+    
+    print("빠른 연속 업데이트 요청 (최적화됨):")
+    
+    # 빠른 연속 요청 (초당 최대 5회로 제한됨)
+    for i in range(20):
+        optimizer.request_update('ui')
+        optimizer.request_update('status')
+        time.sleep(0.05)  # 50ms 간격
+    
+    print("\n업데이트 처리 대기...")
+    time.sleep(3)
+    
+    print(f"\n결과:")
+    print(f"  요청: 20회 x 2 = 40회")
+    print(f"  실제 UI 업데이트: {update_counts['ui']}회")
+    print(f"  실제 상태 업데이트: {update_counts['status']}회")
+    print(f"  최적화율: {((40 - sum(update_counts.values())) / 40 * 100):.1f}%")
+    
+    optimizer.stop()
+
+
+def demo_memory_monitor():
+    """메모리 모니터링 데모"""
+    print("\n=== 메모리 모니터링 데모 ===")
+    
+    monitor = MemoryMonitor(warning_threshold=0.1, critical_threshold=0.2)  # 낮은 임계값으로 테스트
+    
+    def on_warning(memory_info):
+        print(f"⚠️  메모리 경고: {memory_info['usage_ratio']:.1%}")
+        print(f"   시스템 메모리: {memory_info['system_used'] / 1024**3:.1f}GB / {memory_info['system_total'] / 1024**3:.1f}GB")
+    
+    def on_critical(memory_info):
+        print(f"🚨 메모리 위험: {memory_info['usage_ratio']:.1%}")
+        print(f"   즉시 정리 작업 필요!")
+    
+    def on_normal(memory_info):
+        print(f"✅ 메모리 정상: {memory_info['usage_ratio']:.1%}")
+    
+    # 콜백 등록
+    monitor.register_callback('warning', on_warning)
+    monitor.register_callback('critical', on_critical)
+    monitor.register_callback('normal', on_normal)
+    
+    # 현재 메모리 정보
+    memory_info = monitor.get_memory_info()
+    print(f"현재 메모리 사용량: {memory_info['usage_ratio']:.1%}")
+    print(f"시스템 메모리: {memory_info['system_used'] / 1024**3:.1f}GB / {memory_info['system_total'] / 1024**3:.1f}GB")
+    print(f"프로세스 메모리: {memory_info['process_rss'] / 1024**2:.1f}MB")
+    
+    # 모니터링 시작
+    print("\n메모리 모니터링 시작 (5초간)...")
+    monitor.start_monitoring(interval=1.0)
+    
+    # 메모리 사용량 증가 시뮬레이션
+    print("메모리 사용량 증가 시뮬레이션...")
+    large_data = []
+    for i in range(3):
+        # 큰 데이터 생성
+        large_data.append([0] * 1000000)  # 약 8MB
+        time.sleep(1)
+        print(f"  데이터 블록 {i+1} 생성")
+    
+    time.sleep(2)
+    
+    # 메모리 정리
+    print("메모리 정리...")
+    del large_data
+    
+    # 가비지 컬렉션 실행
+    collected = monitor.force_gc()
+    print(f"가비지 컬렉션 결과: {collected}")
+    
+    time.sleep(1)
+    monitor.stop_monitoring()
+
+
+def demo_integrated_performance():
+    """통합 성능 최적화 데모"""
+    print("\n=== 통합 성능 최적화 데모 ===")
+    
+    optimizer = get_performance_optimizer()
+    
+    print("성능 최적화기 초기화 완료")
+    
+    # 성능 통계
+    stats = optimizer.get_performance_stats()
+    print(f"\n초기 성능 통계:")
+    print(f"  긴급도 캐시: {stats['urgency_cache']['size']}/{stats['urgency_cache']['max_size']}")
+    print(f"  배치 대기: {stats['batch_pending']}개")
+    print(f"  실시간 큐: {stats['realtime_queue']}개")
+    print(f"  메모리 사용률: {stats['memory_info']['usage_ratio']:.1%}")
+    
+    # 시뮬레이션된 작업 부하
+    print("\n작업 부하 시뮬레이션...")
+    
+    # 긴급도 계산 (캐싱됨)
+    test_dates = [datetime.now() + timedelta(hours=i) for i in range(10)]
+    for due_date in test_dates:
+        DateService.get_urgency_level(due_date)
+    
+    # 배치 업데이트
+    for i in range(8):
+        optimizer.batch_manager.queue_update('test_update', i, {'data': f'test_{i}'})
+    
+    # 실시간 업데이트
+    for i in range(15):
+        optimizer.realtime_optimizer.request_update('test_component')
+    
+    time.sleep(2)
+    
+    # 최종 통계
+    final_stats = optimizer.get_performance_stats()
+    print(f"\n최종 성능 통계:")
+    print(f"  긴급도 캐시: {final_stats['urgency_cache']['size']}/{final_stats['urgency_cache']['max_size']}")
+    print(f"  배치 대기: {final_stats['batch_pending']}개")
+    print(f"  실시간 큐: {final_stats['realtime_queue']}개")
+    print(f"  메모리 사용률: {final_stats['memory_info']['usage_ratio']:.1%}")
+    
+    optimizer.shutdown()
+
+
+def main():
+    """메인 데모 실행"""
+    print("성능 최적화 및 메모리 관리 기능 데모")
+    print("=" * 50)
+    
+    try:
+        demo_urgency_cache()
+        demo_batch_update()
+        demo_realtime_update()
+        demo_memory_monitor()
+        demo_integrated_performance()
+        
+        print("\n" + "=" * 50)
+        print("모든 데모가 성공적으로 완료되었습니다! ✅")
+        
+    except Exception as e:
+        print(f"\n❌ 데모 실행 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
+if __name__ == "__main__":
+    exit(main())

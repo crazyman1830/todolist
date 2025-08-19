@@ -6,6 +6,7 @@ from services.todo_service import TodoService
 from models.todo import Todo
 from models.subtask import SubTask
 from gui.components import CompactProgressBar
+from utils.performance_utils import get_performance_optimizer, optimized_realtime_update
 
 
 class TodoTree(ttk.Treeview):
@@ -21,6 +22,10 @@ class TodoTree(ttk.Treeview):
         self.subtask_nodes: Dict[int, str] = {}  # subtask_id -> tree_item_id
         self.node_data: Dict[str, Dict[str, Any]] = {}  # tree_item_id -> data
         
+        # 성능 최적화
+        self.performance_optimizer = get_performance_optimizer()
+        self._setup_realtime_updates()
+        
         # 트리 설정
         self.setup_tree()
         self.setup_columns()
@@ -30,6 +35,85 @@ class TodoTree(ttk.Treeview):
         
         # 초기 데이터 로드
         self.refresh_tree()
+    
+    def _setup_realtime_updates(self) -> None:
+        """실시간 업데이트 설정"""
+        # 실시간 업데이트 콜백 등록
+        self.performance_optimizer.realtime_optimizer.register_update_callback(
+            'todo_tree_urgency', self._update_urgency_display
+        )
+        self.performance_optimizer.realtime_optimizer.register_update_callback(
+            'todo_tree_time', self._update_time_display
+        )
+        
+        # 주기적 업데이트 시작
+        self._schedule_periodic_update()
+    
+    def _schedule_periodic_update(self) -> None:
+        """주기적 업데이트 스케줄링"""
+        # 1분마다 시간 관련 표시 업데이트
+        self.after(60000, self._request_time_update)
+        self.after(60000, self._schedule_periodic_update)
+    
+    def _request_time_update(self) -> None:
+        """시간 업데이트 요청"""
+        self.performance_optimizer.realtime_optimizer.request_update('todo_tree_time')
+    
+    def _request_urgency_update(self) -> None:
+        """긴급도 업데이트 요청"""
+        self.performance_optimizer.realtime_optimizer.request_update('todo_tree_urgency')
+    
+    @optimized_realtime_update('todo_tree_urgency')
+    def _update_urgency_display(self) -> None:
+        """긴급도 표시 업데이트"""
+        try:
+            todos = self.todo_service.get_all_todos()
+            
+            for todo in todos:
+                if todo.id in self.todo_nodes:
+                    node_id = self.todo_nodes[todo.id]
+                    urgency_level = todo.get_urgency_level()
+                    self.apply_urgency_styling(node_id, urgency_level, todo.is_completed())
+                
+                for subtask in todo.subtasks:
+                    if subtask.id in self.subtask_nodes:
+                        node_id = self.subtask_nodes[subtask.id]
+                        urgency_level = subtask.get_urgency_level()
+                        self.apply_urgency_styling(node_id, urgency_level, subtask.is_completed)
+                        
+        except Exception as e:
+            print(f"긴급도 표시 업데이트 실패: {e}")
+    
+    @optimized_realtime_update('todo_tree_time')
+    def _update_time_display(self) -> None:
+        """시간 표시 업데이트"""
+        try:
+            todos = self.todo_service.get_all_todos()
+            
+            for todo in todos:
+                if todo.id in self.todo_nodes:
+                    node_id = self.todo_nodes[todo.id]
+                    due_date_text = self._format_due_date_display(todo)
+                    
+                    # 목표 날짜 컬럼만 업데이트
+                    current_values = list(self.item(node_id)['values'])
+                    if len(current_values) >= 3:
+                        current_values[1] = due_date_text  # due_date 컬럼
+                        self.item(node_id, values=current_values)
+                
+                for subtask in todo.subtasks:
+                    if subtask.id in self.subtask_nodes:
+                        node_id = self.subtask_nodes[subtask.id]
+                        due_date_text = self._format_subtask_due_date_display(subtask)
+                        
+                        # 목표 날짜 컬럼만 업데이트
+                        current_values = list(self.item(node_id)['values'])
+                        if len(current_values) >= 3:
+                            current_values[1] = due_date_text  # due_date 컬럼
+                            self.item(node_id, values=current_values)
+                            
+        except Exception as e:
+            print(f"시간 표시 업데이트 실패: {e}")
     
     def setup_tree(self) -> None:
         """트리 구조 기본 설정"""
@@ -50,20 +134,24 @@ class TodoTree(ttk.Treeview):
         self.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     
     def setup_columns(self) -> None:
-        """컬럼 설정 (제목, 진행률, 생성일)"""
-        # 컬럼 정의
-        self['columns'] = ('progress', 'created_at')
+        """컬럼 설정 (제목, 진행률, 목표 날짜, 생성일)"""
+        # 컬럼 정의 - 목표 날짜 컬럼 추가
+        self['columns'] = ('progress', 'due_date', 'created_at')
         
         # 트리 컬럼 (제목) 설정
-        self.column('#0', width=350, minwidth=250, anchor='w')
+        self.column('#0', width=300, minwidth=200, anchor='w')
         self.heading('#0', text='제목', anchor='w')
         
         # 진행률 컬럼 설정 (더 넓게 설정하여 진행률 바 표시)
-        self.column('progress', width=140, minwidth=120, anchor='center')
+        self.column('progress', width=120, minwidth=100, anchor='center')
         self.heading('progress', text='진행률', anchor='center')
         
+        # 목표 날짜 컬럼 설정
+        self.column('due_date', width=150, minwidth=120, anchor='center')
+        self.heading('due_date', text='목표 날짜', anchor='center')
+        
         # 생성일 컬럼 설정
-        self.column('created_at', width=150, minwidth=120, anchor='center')
+        self.column('created_at', width=130, minwidth=110, anchor='center')
         self.heading('created_at', text='생성일', anchor='center')
         
         # 진행률 바 위젯들을 저장할 딕셔너리
@@ -75,6 +163,9 @@ class TodoTree(ttk.Treeview):
         self.todo_context_menu = tk.Menu(self, tearoff=0)
         self.todo_context_menu.add_command(label="할일 수정 (F2)", command=self.on_edit_todo)
         self.todo_context_menu.add_command(label="할일 삭제 (Del)", command=self.on_delete_todo)
+        self.todo_context_menu.add_separator()
+        self.todo_context_menu.add_command(label="목표 날짜 설정", command=self.on_set_due_date)
+        self.todo_context_menu.add_command(label="목표 날짜 제거", command=self.on_remove_due_date)
         self.todo_context_menu.add_separator()
         self.todo_context_menu.add_command(label="하위작업 추가 (Ctrl+Shift+N)", command=self.on_add_subtask)
         self.todo_context_menu.add_separator()
@@ -89,6 +180,9 @@ class TodoTree(ttk.Treeview):
         self.subtask_context_menu = tk.Menu(self, tearoff=0)
         self.subtask_context_menu.add_command(label="하위작업 수정 (F2)", command=self.on_edit_subtask)
         self.subtask_context_menu.add_command(label="하위작업 삭제 (Del)", command=self.on_delete_subtask)
+        self.subtask_context_menu.add_separator()
+        self.subtask_context_menu.add_command(label="목표 날짜 설정", command=self.on_set_subtask_due_date)
+        self.subtask_context_menu.add_command(label="목표 날짜 제거", command=self.on_remove_subtask_due_date)
         self.subtask_context_menu.add_separator()
         self.subtask_context_menu.add_command(label="완료 상태 토글 (Space)", command=self.on_toggle_subtask_from_menu)
         self.subtask_context_menu.add_separator()
@@ -130,11 +224,21 @@ class TodoTree(ttk.Treeview):
         self.bind('<B1-Motion>', self.on_tree_scroll, add='+')
         self.bind('<MouseWheel>', self.on_tree_scroll, add='+')
         
-        # 키보드 네비게이션
+        # 키보드 네비게이션 (접근성 개선)
         self.bind('<Up>', self.handle_key_navigation)
         self.bind('<Down>', self.handle_key_navigation)
         self.bind('<Left>', self.handle_key_navigation)
         self.bind('<Right>', self.handle_key_navigation)
+        self.bind('<Home>', self.handle_key_navigation)
+        self.bind('<End>', self.handle_key_navigation)
+        self.bind('<Page_Up>', self.handle_key_navigation)
+        self.bind('<Page_Down>', self.handle_key_navigation)
+        
+        # 접근성을 위한 추가 키보드 단축키
+        self.bind('<Control-Up>', lambda e: self._move_todo_up())
+        self.bind('<Control-Down>', lambda e: self._move_todo_down())
+        self.bind('<Alt-Return>', lambda e: self._show_item_details())
+        self.bind('<Control-space>', lambda e: self._toggle_expansion())
         
         # 할일 순서 변경 이벤트
         self.bind('<<TodoReordered>>', self.on_todo_reordered)
@@ -152,6 +256,10 @@ class TodoTree(ttk.Treeview):
             'is_dragging': False,
             'drag_threshold': 5  # 드래그 시작을 위한 최소 이동 거리
         }
+        
+        # 접근성 상태 추적
+        self._accessibility_mode = False
+        self._last_announced_item = None
     
     def refresh_tree(self) -> None:
         """트리 데이터 새로고침"""
@@ -204,20 +312,26 @@ class TodoTree(ttk.Treeview):
         progress_rate = todo.get_completion_rate()
         progress_text = self._format_progress(progress_rate)
         
+        # 목표 날짜 포맷
+        due_date_text = self._format_due_date_display(todo)
+        
         # 생성일 포맷
-        created_text = todo.created_at.strftime('%Y-%m-%d %H:%M')
+        created_text = todo.created_at.strftime('%m/%d %H:%M')
         
         # 완료된 할일의 경우 제목에 시각적 효과 적용
         title_text = self._format_todo_title(todo)
+        
+        # 긴급도 레벨 계산
+        urgency_level = todo.get_urgency_level()
         
         # 트리 노드 추가
         node_id = self.insert(
             '',  # 부모 (루트)
             'end',
             text=f"{icon} {title_text}",
-            values=(progress_text, created_text),
+            values=(progress_text, due_date_text, created_text),
             open=todo.is_expanded,
-            tags=('todo_completed' if todo.is_completed() else 'todo_incomplete',)
+            tags=(f'todo_{urgency_level}' if not todo.is_completed() else 'todo_completed',)
         )
         
         # 매핑 정보 저장
@@ -236,8 +350,8 @@ class TodoTree(ttk.Treeview):
         for subtask in todo.subtasks:
             self.add_subtask_node(node_id, subtask)
         
-        # 완료된 할일에 대한 시각적 스타일 적용
-        self._apply_completion_style(node_id, todo.is_completed())
+        # 긴급도에 따른 시각적 스타일 적용
+        self.apply_urgency_styling(node_id, urgency_level, todo.is_completed())
         
         return node_id
     
@@ -249,19 +363,25 @@ class TodoTree(ttk.Treeview):
         # 하위작업은 진행률 대신 완료 상태 표시
         status_text = "완료" if subtask.is_completed else "진행중"
         
+        # 목표 날짜 포맷
+        due_date_text = self._format_subtask_due_date_display(subtask)
+        
         # 생성일 포맷
-        created_text = subtask.created_at.strftime('%Y-%m-%d %H:%M')
+        created_text = subtask.created_at.strftime('%m/%d %H:%M')
         
         # 완료된 하위작업의 경우 제목에 시각적 효과 적용
         title_text = self._format_subtask_title(subtask)
+        
+        # 긴급도 레벨 계산
+        urgency_level = subtask.get_urgency_level()
         
         # 트리 노드 추가
         node_id = self.insert(
             parent_id,
             'end',
             text=f"  {icon} {title_text}",  # 들여쓰기로 계층 표현
-            values=(status_text, created_text),
-            tags=('subtask_completed' if subtask.is_completed else 'subtask_incomplete',)
+            values=(status_text, due_date_text, created_text),
+            tags=(f'subtask_{urgency_level}' if not subtask.is_completed else 'subtask_completed',)
         )
         
         # 매핑 정보 저장
@@ -273,8 +393,8 @@ class TodoTree(ttk.Treeview):
             'data': subtask
         }
         
-        # 완료된 하위작업에 대한 시각적 스타일 적용
-        self._apply_completion_style(node_id, subtask.is_completed)
+        # 긴급도에 따른 시각적 스타일 적용
+        self.apply_urgency_styling(node_id, urgency_level, subtask.is_completed)
         
         return node_id
     
@@ -293,18 +413,31 @@ class TodoTree(ttk.Treeview):
         progress_rate = todo.get_completion_rate()
         progress_text = self._format_progress(progress_rate)
         
+        # 목표 날짜 업데이트
+        due_date_text = self._format_due_date_display(todo)
+        
+        # 긴급도 레벨 계산
+        urgency_level = todo.get_urgency_level()
+        
         # 노드 업데이트
+        current_values = list(self.item(node_id)['values'])
+        if len(current_values) >= 3:
+            # 기존 생성일 유지
+            created_text = current_values[2]
+        else:
+            created_text = todo.created_at.strftime('%m/%d %H:%M')
+        
         self.item(node_id, 
                  text=f"{icon} {title_text}", 
-                 values=(progress_text, self.item(node_id)['values'][1]),
-                 tags=('todo_completed' if todo.is_completed() else 'todo_incomplete',))
+                 values=(progress_text, due_date_text, created_text),
+                 tags=(f'todo_{urgency_level}' if not todo.is_completed() else 'todo_completed',))
         
         # 진행률 바 위젯 업데이트
         if todo.subtasks:
             self._update_progress_widget(node_id, progress_rate)
         
-        # 완료 상태에 따른 시각적 스타일 적용
-        self._apply_completion_style(node_id, todo.is_completed())
+        # 긴급도에 따른 시각적 스타일 적용
+        self.apply_urgency_styling(node_id, urgency_level, todo.is_completed())
         
         # 데이터 업데이트
         self.node_data[node_id]['data'] = todo
@@ -323,14 +456,27 @@ class TodoTree(ttk.Treeview):
         # 상태 업데이트
         status_text = "완료" if subtask.is_completed else "진행중"
         
+        # 목표 날짜 업데이트
+        due_date_text = self._format_subtask_due_date_display(subtask)
+        
+        # 긴급도 레벨 계산
+        urgency_level = subtask.get_urgency_level()
+        
         # 노드 업데이트
+        current_values = list(self.item(node_id)['values'])
+        if len(current_values) >= 3:
+            # 기존 생성일 유지
+            created_text = current_values[2]
+        else:
+            created_text = subtask.created_at.strftime('%m/%d %H:%M')
+        
         self.item(node_id, 
                  text=f"  {icon} {title_text}", 
-                 values=(status_text, self.item(node_id)['values'][1]),
-                 tags=('subtask_completed' if subtask.is_completed else 'subtask_incomplete',))
+                 values=(status_text, due_date_text, created_text),
+                 tags=(f'subtask_{urgency_level}' if not subtask.is_completed else 'subtask_completed',))
         
-        # 완료 상태에 따른 시각적 스타일 적용
-        self._apply_completion_style(node_id, subtask.is_completed)
+        # 긴급도에 따른 시각적 스타일 적용
+        self.apply_urgency_styling(node_id, urgency_level, subtask.is_completed)
         
         # 데이터 업데이트
         self.node_data[node_id]['data'] = subtask
@@ -382,6 +528,110 @@ class TodoTree(ttk.Treeview):
         if node_id in self.node_data:
             del self.node_data[node_id]
     
+    def _format_due_date_display(self, todo: Todo) -> str:
+        """할일의 목표 날짜 표시 포맷"""
+        if todo.due_date is None:
+            return ""
+        
+        # 완료된 경우 완료 시간 표시
+        if todo.is_completed() and todo.completed_at:
+            return f"완료: {todo.completed_at.strftime('%m/%d %H:%M')}"
+        
+        # 남은 시간 텍스트 반환
+        time_text = todo.get_time_remaining_text()
+        
+        # 상대적 날짜 표시도 추가
+        from services.date_service import DateService
+        relative_date = DateService.format_due_date(todo.due_date, 'relative')
+        
+        if time_text and relative_date:
+            return f"{relative_date} ({time_text})"
+        elif time_text:
+            return time_text
+        elif relative_date:
+            return relative_date
+        else:
+            return todo.due_date.strftime('%m/%d %H:%M')
+    
+    def _format_subtask_due_date_display(self, subtask: SubTask) -> str:
+        """하위작업의 목표 날짜 표시 포맷"""
+        if subtask.due_date is None:
+            return ""
+        
+        # 완료된 경우 완료 시간 표시
+        if subtask.is_completed and subtask.completed_at:
+            return f"완료: {subtask.completed_at.strftime('%m/%d %H:%M')}"
+        
+        # 남은 시간 텍스트 반환
+        time_text = subtask.get_time_remaining_text()
+        
+        # 상대적 날짜 표시도 추가
+        from services.date_service import DateService
+        relative_date = DateService.format_due_date(subtask.due_date, 'relative')
+        
+        if time_text and relative_date:
+            return f"{relative_date} ({time_text})"
+        elif time_text:
+            return time_text
+        elif relative_date:
+            return relative_date
+        else:
+            return subtask.due_date.strftime('%m/%d %H:%M')
+    
+    def apply_urgency_styling(self, item_id: str, urgency_level: str, is_completed: bool = False) -> None:
+        """긴급도에 따른 스타일링 적용"""
+        try:
+            from utils.color_utils import ColorUtils
+            
+            if is_completed:
+                # 완료된 항목은 회색으로 표시
+                self.item(item_id, tags=('completed',))
+            else:
+                # 긴급도에 따른 태그 설정
+                tag_name = f'urgency_{urgency_level}'
+                self.item(item_id, tags=(tag_name,))
+                
+                # 긴급도별 스타일 설정 (아직 설정되지 않은 경우만)
+                if not hasattr(self, '_urgency_styles_configured'):
+                    self._configure_urgency_styles()
+                    self._urgency_styles_configured = True
+                    
+        except Exception as e:
+            print(f"긴급도 스타일 적용 실패: {e}")
+    
+    def _configure_urgency_styles(self) -> None:
+        """긴급도별 스타일 설정"""
+        try:
+            from utils.color_utils import ColorUtils
+            
+            # 각 긴급도별 스타일 설정
+            urgency_levels = ['overdue', 'urgent', 'warning', 'normal']
+            
+            for level in urgency_levels:
+                tag_name = f'urgency_{level}'
+                color = ColorUtils.get_urgency_color(level)
+                bg_color = ColorUtils.get_urgency_background_color(level)
+                
+                # 긴급한 경우 굵은 글씨
+                if level in ['overdue', 'urgent']:
+                    self.tag_configure(tag_name, 
+                                     foreground=color, 
+                                     background=bg_color,
+                                     font=('TkDefaultFont', 9, 'bold'))
+                else:
+                    self.tag_configure(tag_name, 
+                                     foreground=color, 
+                                     background=bg_color)
+            
+            # 완료된 항목 스타일
+            completed_colors = ColorUtils.get_completed_colors()
+            self.tag_configure('completed', 
+                             foreground=completed_colors['text'],
+                             background=completed_colors['background'])
+                             
+        except Exception as e:
+            print(f"긴급도 스타일 설정 실패: {e}")
+
     def _get_todo_icon(self, todo: Todo) -> str:
         """할일의 완료 상태에 따른 아이콘 반환"""
         if todo.is_completed():
@@ -486,29 +736,13 @@ class TodoTree(ttk.Treeview):
             # 위젯이 없으면 새로 생성
             self._create_progress_widget(node_id, progress)
     
-    def _apply_completion_style(self, node_id: str, is_completed: bool) -> None:
-        """완료 상태에 따른 시각적 스타일 적용"""
-        try:
-            if is_completed:
-                # 완료된 항목의 텍스트 색상을 회색으로 변경
-                self.item(node_id, tags=('completed',))
-            else:
-                # 미완료 항목의 기본 스타일
-                self.item(node_id, tags=('incomplete',))
-        except Exception as e:
-            print(f"스타일 적용 실패: {e}")
+
     
     def _setup_visual_styles(self) -> None:
         """시각적 스타일 설정"""
-        # 완료된 항목에 대한 스타일
-        self.tag_configure('completed', foreground='gray')
-        self.tag_configure('todo_completed', foreground='gray')
-        self.tag_configure('subtask_completed', foreground='gray')
-        
-        # 미완료 항목에 대한 스타일
-        self.tag_configure('incomplete', foreground='black')
-        self.tag_configure('todo_incomplete', foreground='black')
-        self.tag_configure('subtask_incomplete', foreground='black')
+        # 긴급도별 스타일은 _configure_urgency_styles에서 설정
+        # 여기서는 기본 스타일만 설정
+        pass
     
     # 이벤트 핸들러들
     def on_single_click(self, event) -> None:
@@ -899,6 +1133,155 @@ class TodoTree(ttk.Treeview):
             # 콜백이 없는 경우 기본 새로고침 수행
             self.refresh_tree()
     
+    def on_set_due_date(self) -> None:
+        """할일 목표 날짜 설정 메뉴 핸들러"""
+        selection = self.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'todo':
+            return
+        
+        todo = self.node_data[item_id]['data']
+        
+        # 목표 날짜 설정 다이얼로그 표시
+        try:
+            from gui.dialogs import DueDateDialog
+            dialog = DueDateDialog(
+                self.parent,
+                current_due_date=todo.due_date,
+                item_type="할일"
+            )
+            
+            if dialog.result:
+                # 목표 날짜 설정
+                success = self.todo_service.set_todo_due_date(todo.id, dialog.result)
+                if success:
+                    # 트리 업데이트
+                    updated_todo = self.todo_service.get_todo_by_id(todo.id)
+                    if updated_todo:
+                        self.update_todo_node(updated_todo)
+                        # 상태 업데이트 이벤트 생성
+                        self.event_generate('<<StatusUpdate>>')
+                else:
+                    print(f"할일 목표 날짜 설정 실패: {todo.title}")
+        except Exception as e:
+            print(f"목표 날짜 설정 다이얼로그 오류: {e}")
+    
+    def on_remove_due_date(self) -> None:
+        """할일 목표 날짜 제거 메뉴 핸들러"""
+        selection = self.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'todo':
+            return
+        
+        todo = self.node_data[item_id]['data']
+        
+        if todo.due_date is None:
+            return  # 이미 목표 날짜가 없음
+        
+        # 목표 날짜 제거
+        success = self.todo_service.set_todo_due_date(todo.id, None)
+        if success:
+            # 트리 업데이트
+            updated_todo = self.todo_service.get_todo_by_id(todo.id)
+            if updated_todo:
+                self.update_todo_node(updated_todo)
+                # 상태 업데이트 이벤트 생성
+                self.event_generate('<<StatusUpdate>>')
+        else:
+            print(f"할일 목표 날짜 제거 실패: {todo.title}")
+    
+    def on_set_subtask_due_date(self) -> None:
+        """하위작업 목표 날짜 설정 메뉴 핸들러"""
+        selection = self.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'subtask':
+            return
+        
+        subtask = self.node_data[item_id]['data']
+        
+        # 상위 할일 정보 가져오기
+        parent_todo = self.todo_service.get_todo_by_id(subtask.todo_id)
+        
+        # 목표 날짜 설정 다이얼로그 표시
+        try:
+            from gui.dialogs import DueDateDialog
+            dialog = DueDateDialog(
+                self.parent,
+                current_due_date=subtask.due_date,
+                parent_due_date=parent_todo.due_date if parent_todo else None,
+                item_type="하위작업"
+            )
+            
+            if dialog.result:
+                # 목표 날짜 설정
+                success = self.todo_service.set_subtask_due_date(subtask.todo_id, subtask.id, dialog.result)
+                if success:
+                    # 트리 업데이트
+                    updated_subtasks = self.todo_service.get_subtasks(subtask.todo_id)
+                    for st in updated_subtasks:
+                        if st.id == subtask.id:
+                            self.update_subtask_node(st)
+                            break
+                    
+                    # 상위 할일도 업데이트 (긴급도 변경 가능성)
+                    if parent_todo:
+                        updated_todo = self.todo_service.get_todo_by_id(parent_todo.id)
+                        if updated_todo:
+                            self.update_todo_node(updated_todo)
+                    
+                    # 상태 업데이트 이벤트 생성
+                    self.event_generate('<<StatusUpdate>>')
+                else:
+                    print(f"하위작업 목표 날짜 설정 실패: {subtask.title}")
+        except Exception as e:
+            print(f"목표 날짜 설정 다이얼로그 오류: {e}")
+    
+    def on_remove_subtask_due_date(self) -> None:
+        """하위작업 목표 날짜 제거 메뉴 핸들러"""
+        selection = self.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'subtask':
+            return
+        
+        subtask = self.node_data[item_id]['data']
+        
+        if subtask.due_date is None:
+            return  # 이미 목표 날짜가 없음
+        
+        # 목표 날짜 제거
+        success = self.todo_service.set_subtask_due_date(subtask.todo_id, subtask.id, None)
+        if success:
+            # 트리 업데이트
+            updated_subtasks = self.todo_service.get_subtasks(subtask.todo_id)
+            for st in updated_subtasks:
+                if st.id == subtask.id:
+                    self.update_subtask_node(st)
+                    break
+            
+            # 상위 할일도 업데이트
+            parent_todo = self.todo_service.get_todo_by_id(subtask.todo_id)
+            if parent_todo:
+                updated_todo = self.todo_service.get_todo_by_id(parent_todo.id)
+                if updated_todo:
+                    self.update_todo_node(updated_todo)
+            
+            # 상태 업데이트 이벤트 생성
+            self.event_generate('<<StatusUpdate>>')
+        else:
+            print(f"하위작업 목표 날짜 제거 실패: {subtask.title}")
+
     def on_toggle_subtask_from_menu(self) -> None:
         """메뉴에서 하위작업 토글"""
         selection = self.selection()
@@ -954,3 +1337,237 @@ class TodoTree(ttk.Treeview):
             if todo.id in self.todo_nodes:
                 node_id = self.todo_nodes[todo.id]
                 self.item(node_id, open=todo.is_expanded)
+    
+    # 컨텍스트 메뉴에서 참조되는 메서드들 (메인 윈도우에서 구현되어야 함)
+    def on_edit_todo(self) -> None:
+        """할일 수정 - 메인 윈도우에서 구현"""
+        self.event_generate('<<EditTodo>>')
+    
+    def on_delete_todo(self) -> None:
+        """할일 삭제 - 메인 윈도우에서 구현"""
+        self.event_generate('<<DeleteTodo>>')
+    
+    def on_add_subtask(self) -> None:
+        """하위작업 추가 - 메인 윈도우에서 구현"""
+        self.event_generate('<<AddSubtask>>')
+    
+    def on_edit_subtask(self) -> None:
+        """하위작업 수정 - 메인 윈도우에서 구현"""
+        self.event_generate('<<EditSubtask>>')
+    
+    def on_delete_subtask(self) -> None:
+        """하위작업 삭제 - 메인 윈도우에서 구현"""
+        self.event_generate('<<DeleteSubtask>>')
+    
+    def on_open_folder(self) -> None:
+        """폴더 열기 - 메인 윈도우에서 구현"""
+        self.event_generate('<<OpenFolder>>')
+    
+    def on_refresh(self) -> None:
+        """새로고침"""
+        self.refresh_tree()
+    
+    def on_add_new_todo(self) -> None:
+        """새 할일 추가 - 메인 윈도우에서 구현"""
+        self.event_generate('<<AddNewTodo>>')
+    
+    def expand_all(self) -> None:
+        """모든 노드 확장"""
+        for item_id in self.get_children():
+            self.item(item_id, open=True)
+            # 확장 상태 저장
+            if item_id in self.node_data and self.node_data[item_id]['type'] == 'todo':
+                todo_id = self.node_data[item_id]['todo_id']
+                self.todo_service.update_todo_expansion_state(todo_id, True)
+    
+    def collapse_all(self) -> None:
+        """모든 노드 축소"""
+        for item_id in self.get_children():
+            self.item(item_id, open=False)
+            # 축소 상태 저장
+            if item_id in self.node_data and self.node_data[item_id]['type'] == 'todo':
+                todo_id = self.node_data[item_id]['todo_id']
+                self.todo_service.update_todo_expansion_state(todo_id, False)
+    
+    # 접근성 개선 메서드들
+    def _move_todo_up(self):
+        """선택된 할일을 위로 이동 (Ctrl+Up)
+        
+        Requirements: 키보드 단축키 추가
+        """
+        selected_item = self.selection()
+        if not selected_item:
+            return
+        
+        item_id = selected_item[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'todo':
+            return
+        
+        # 현재 위치 찾기
+        parent = self.parent(item_id)
+        children = self.get_children(parent)
+        current_index = children.index(item_id)
+        
+        if current_index > 0:
+            # 위로 이동
+            self.move(item_id, parent, current_index - 1)
+            self._announce_move("위로 이동했습니다")
+    
+    def _move_todo_down(self):
+        """선택된 할일을 아래로 이동 (Ctrl+Down)
+        
+        Requirements: 키보드 단축키 추가
+        """
+        selected_item = self.selection()
+        if not selected_item:
+            return
+        
+        item_id = selected_item[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'todo':
+            return
+        
+        # 현재 위치 찾기
+        parent = self.parent(item_id)
+        children = self.get_children(parent)
+        current_index = children.index(item_id)
+        
+        if current_index < len(children) - 1:
+            # 아래로 이동
+            self.move(item_id, parent, current_index + 1)
+            self._announce_move("아래로 이동했습니다")
+    
+    def _show_item_details(self):
+        """선택된 항목의 상세 정보 표시 (Alt+Enter)
+        
+        Requirements: 접근성 향상
+        """
+        selected_item = self.selection()
+        if not selected_item:
+            return
+        
+        item_id = selected_item[0]
+        if item_id not in self.node_data:
+            return
+        
+        node_data = self.node_data[item_id]
+        
+        if node_data['type'] == 'todo':
+            todo = node_data['data']
+            details = self._format_todo_details(todo)
+        elif node_data['type'] == 'subtask':
+            subtask = node_data['data']
+            details = self._format_subtask_details(subtask)
+        else:
+            return
+        
+        from gui.dialogs import show_info_dialog
+        show_info_dialog(self, details, "항목 상세 정보")
+    
+    def _toggle_expansion(self):
+        """선택된 할일의 확장/축소 토글 (Ctrl+Space)
+        
+        Requirements: 키보드 단축키 추가
+        """
+        selected_item = self.selection()
+        if not selected_item:
+            return
+        
+        item_id = selected_item[0]
+        if item_id not in self.node_data or self.node_data[item_id]['type'] != 'todo':
+            return
+        
+        # 현재 확장 상태 확인
+        is_open = self.item(item_id, 'open')
+        
+        # 토글
+        self.item(item_id, open=not is_open)
+        
+        # 상태 저장
+        todo_id = self.node_data[item_id]['todo_id']
+        self.todo_service.update_todo_expansion_state(todo_id, not is_open)
+        
+        # 접근성 안내
+        status = "확장됨" if not is_open else "축소됨"
+        self._announce_move(f"할일이 {status}")
+    
+    def _format_todo_details(self, todo) -> str:
+        """할일 상세 정보 포맷팅
+        
+        Requirements: 사용자 가이드 개선
+        """
+        details = f"할일: {todo.title}\n"
+        details += f"생성일: {todo.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+        
+        if todo.due_date:
+            details += f"목표 날짜: {todo.due_date.strftime('%Y-%m-%d %H:%M')}\n"
+            urgency = todo.get_urgency_level()
+            urgency_desc = {
+                'overdue': '지연됨 (매우 긴급)',
+                'urgent': '24시간 이내 마감 (긴급)',
+                'warning': '3일 이내 마감 (주의)',
+                'normal': '일반 우선순위'
+            }.get(urgency, '알 수 없음')
+            details += f"긴급도: {urgency_desc}\n"
+            details += f"남은 시간: {todo.get_time_remaining_text()}\n"
+        else:
+            details += "목표 날짜: 설정되지 않음\n"
+        
+        if todo.is_completed():
+            details += f"완료일: {todo.completed_at.strftime('%Y-%m-%d %H:%M') if todo.completed_at else '알 수 없음'}\n"
+            details += "상태: 완료됨\n"
+        else:
+            details += "상태: 진행 중\n"
+        
+        details += f"진행률: {int(todo.get_completion_rate() * 100)}%\n"
+        details += f"하위작업 개수: {len(todo.subtasks)}개\n"
+        
+        if todo.subtasks:
+            completed_subtasks = sum(1 for st in todo.subtasks if st.is_completed)
+            details += f"완료된 하위작업: {completed_subtasks}개\n"
+        
+        details += f"폴더 경로: {todo.folder_path}\n"
+        
+        return details
+    
+    def _format_subtask_details(self, subtask) -> str:
+        """하위작업 상세 정보 포맷팅
+        
+        Requirements: 사용자 가이드 개선
+        """
+        details = f"하위작업: {subtask.title}\n"
+        details += f"생성일: {subtask.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+        
+        if subtask.due_date:
+            details += f"목표 날짜: {subtask.due_date.strftime('%Y-%m-%d %H:%M')}\n"
+            urgency = subtask.get_urgency_level()
+            urgency_desc = {
+                'overdue': '지연됨 (매우 긴급)',
+                'urgent': '24시간 이내 마감 (긴급)',
+                'warning': '3일 이내 마감 (주의)',
+                'normal': '일반 우선순위'
+            }.get(urgency, '알 수 없음')
+            details += f"긴급도: {urgency_desc}\n"
+            details += f"남은 시간: {subtask.get_time_remaining_text()}\n"
+        else:
+            details += "목표 날짜: 설정되지 않음\n"
+        
+        if subtask.is_completed:
+            details += f"완료일: {subtask.completed_at.strftime('%Y-%m-%d %H:%M') if subtask.completed_at else '알 수 없음'}\n"
+            details += "상태: 완료됨\n"
+        else:
+            details += "상태: 진행 중\n"
+        
+        return details
+    
+    def _announce_move(self, message: str):
+        """접근성을 위한 이동 안내
+        
+        Requirements: 접근성 향상
+        """
+        # 상태바에 메시지 표시 (스크린 리더가 읽을 수 있도록)
+        try:
+            # 메인 윈도우의 상태바 업데이트
+            self.event_generate('<<StatusUpdate>>', data=message)
+        except:
+            # 이벤트 생성 실패 시 무시
+            pass

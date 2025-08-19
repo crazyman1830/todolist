@@ -11,6 +11,10 @@
 - 🗑️ **할일 삭제**: 완료된 할일을 제거 (폴더 삭제 옵션 포함)
 - 📁 **폴더 관리**: 할일별 전용 폴더에서 관련 파일 관리
 - 🔗 **서브태스크**: 할일 내 세부 작업 관리 및 진행률 추적
+- 📅 **목표 날짜**: 할일과 서브태스크에 목표 날짜/시간 설정
+- 🚨 **긴급도 표시**: 목표 날짜 기준 색상 코딩 및 우선순위 표시
+- 🔔 **알림 시스템**: 지연된 할일 및 오늘 마감 할일 알림
+- 🔍 **필터링**: 날짜 기준 할일 필터링 및 정렬
 
 ### 인터페이스
 - 🖥️ **GUI 버전**: 직관적인 그래픽 사용자 인터페이스 (권장)
@@ -84,7 +88,7 @@
    python demo/demo_todo_tree.py             # 할일 트리 구조 데모
    ```
    
-   자세한 데모 사용법은 `demo/README.md`를 참조하세요.
+   자세한 데모 사용법은 `docs/DEMO_GUIDE.md`를 참조하세요.
 
 ## 📁 프로젝트 구조
 
@@ -116,22 +120,52 @@ todolist/
 ├── utils/                 # 유틸리티
 │   └── validators.py     # 입력 검증
 ├── demo/                  # 데모 및 예제
-│   ├── README.md         # 데모 사용법 안내
-│   ├── data/             # 데모용 데이터 파일들
-│   │   ├── demo_todos.json # 데모 할일 데이터
-│   │   └── todo_folders/ # 데모용 할일 폴더들
-│   ├── demo_gui.py       # GUI 데모
-│   ├── demo_auto_save_backup.py # 자동 저장 데모
-│   ├── demo_progress_components.py # 진행률 컴포넌트 데모
-│   └── demo_todo_tree.py # 할일 트리 데모
+│   ├── gui/              # GUI 관련 데모
+│   │   ├── demo_main_gui.py # 메인 GUI 종합 데모 (권장)
+│   │   ├── demo_gui.py   # 기본 GUI 데모
+│   │   ├── demo_progress_components.py # 진행률 컴포넌트 데모
+│   │   └── demo_todo_tree.py # 할일 트리 데모
+│   ├── features/         # 기능별 데모
+│   │   ├── demo_due_date_features.py # 목표 날짜 기능 종합 데모
+│   │   ├── demo_due_date_dialog.py # 목표 날짜 다이얼로그 데모
+│   │   ├── demo_due_date_filtering.py # 날짜 필터링 데모
+│   │   └── demo_auto_save_backup.py # 자동 저장 데모
+│   ├── services/         # 서비스 데모
+│   │   ├── demo_notification_service.py # 알림 서비스 데모
+│   │   └── demo_todo_service_due_date.py # Todo 서비스 데모
+│   ├── integration/      # 통합 데모
+│   │   └── demo_startup_notification_integration.py # 시작 알림 통합 데모
+│   ├── performance/      # 성능 데모
+│   │   └── demo_performance_optimization.py # 성능 최적화 데모
+│   ├── accessibility/    # 접근성 데모
+│   │   └── demo_accessibility_improvements.py # 접근성 개선 데모
+│   └── data/             # 데모용 데이터 파일들
+│       ├── demo_todos.json # 데모 할일 데이터
+│       └── todo_folders/ # 데모용 할일 폴더들
 ├── test/                  # 테스트 파일
-│   ├── run_all_tests.py  # 전체 테스트 실행
-│   ├── test_task*.py     # 태스크별 테스트 파일들
-│   ├── test_*_service.py # 서비스 단위 테스트
-│   ├── test_*_integration.py # 통합 테스트
-│   └── test_*_user_experience.py # 사용자 경험 테스트
-├── docs/                  # 문서
-│   └── TASK*_IMPLEMENTATION_SUMMARY.md # 구현 요약 문서
+│   ├── unit/             # 단위 테스트
+│   │   ├── test_models.py # 모델 클래스 테스트
+│   │   ├── test_services.py # 서비스 클래스 테스트
+│   │   ├── test_utils.py # 유틸리티 함수 테스트
+│   │   └── test_*.py     # 개별 컴포넌트 테스트
+│   ├── integration/      # 통합 테스트
+│   │   ├── test_dialog_integration.py # 다이얼로그 통합 테스트
+│   │   ├── test_startup_notification_integration.py # 시작 알림 통합 테스트
+│   │   └── test_*_integration.py # 기타 통합 테스트
+│   ├── verification/     # 작업 검증 테스트
+│   │   ├── test_task*_verification.py # 태스크별 검증 테스트
+│   │   └── test_final_verification_simple.py # 간단한 최종 검증
+│   ├── run_all_tests_organized.py # 통합 테스트 실행기 (권장)
+│   ├── run_all_tests.py  # 기존 테스트 실행기
+│   ├── run_final_verification.py # 최종 검증 실행기
+│   └── final_system_verification.py # 시스템 검증
+├── docs/                  # 프로젝트 문서
+│   ├── CLEANUP_SUMMARY.md    # 프로젝트 정리 요약
+│   ├── UNIT_TEST_SUMMARY.md  # 단위 테스트 요약
+│   ├── INTEGRATION_TEST_SUMMARY.md # 통합 테스트 요약
+│   ├── FINAL_INTEGRATION_SUMMARY.md # 최종 통합 검증 요약
+│   ├── DEMO_GUIDE.md         # 데모 사용 가이드
+│   └── TEST_GUIDE.md         # 테스트 구조 가이드
 ├── data/                  # 데이터 저장소
 │   ├── todos.json        # 할일 데이터 파일
 │   ├── todos.json.backup* # 백업 파일들 (최대 5개)
@@ -210,33 +244,41 @@ GUI 버전은 직관적인 그래픽 인터페이스를 제공합니다:
 ### 테스트 실행
 
 ```bash
-# 전체 테스트 실행
-python test/run_all_tests.py
+# 전체 테스트 실행 (권장)
+python test/run_all_tests_organized.py
+
+# 카테고리별 테스트 실행
+python -m unittest discover test/unit -v      # 단위 테스트
+python -m unittest discover test/integration -v  # 통합 테스트
+python -m unittest discover test/verification -v # 검증 테스트
+
+# 최종 시스템 검증
+python test/final_system_verification.py
 
 # 개별 테스트 실행
-python test/test_validators.py
-python test/test_storage_service.py
-python test/test_todo_service.py
-# ... 기타 테스트 파일들
+python -m unittest test.unit.test_models -v
+python -m unittest test.integration.test_dialog_integration -v
 ```
 
 ### 테스트 커버리지
 
-- **단위 테스트**: 각 모듈의 개별 기능 테스트
-- **통합 테스트**: 모듈 간 상호작용 테스트
-- **사용자 경험 테스트**: UI/UX 개선사항 검증
+- **단위 테스트**: 각 모듈의 개별 기능 테스트 (test/unit/)
+- **통합 테스트**: 모듈 간 상호작용 테스트 (test/integration/)
+- **검증 테스트**: 특정 작업(Task) 완료 여부 검증 (test/verification/)
 - **성능 테스트**: 대용량 데이터 처리 성능 검증
 - **안정성 테스트**: 오류 상황 및 복구 시나리오 테스트
+- **GUI 테스트**: 사용자 인터페이스 및 상호작용 테스트
 
 ### 테스트 통계
 
 - **총 테스트 수**: 200개 이상
 - **성공률**: 100%
 - **커버리지**: 모든 주요 기능 및 오류 시나리오 포함
-- **GUI 테스트**: 사용자 인터페이스 및 상호작용 테스트 포함
+- **단위 테스트**: 67개 (모든 핵심 컴포넌트 커버)
 - **통합 테스트**: 전체 시스템 워크플로우 검증
-- **태스크별 테스트**: 16개 주요 태스크에 대한 개별 검증
-- **사용자 경험 테스트**: UX 개선사항 및 접근성 검증
+- **검증 테스트**: 20개 주요 태스크에 대한 개별 검증
+- **GUI 테스트**: 사용자 인터페이스 및 상호작용 테스트 포함
+- **성능 테스트**: 대량 데이터 처리 및 메모리 사용량 검증
 
 ## 🔧 기술적 특징
 
@@ -336,6 +378,18 @@ python test/test_todo_service.py
 
 이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
 
+## 📚 문서
+
+자세한 문서는 `docs/` 디렉토리를 참조하세요:
+
+- **[프로젝트 개요](docs/PROJECT_OVERVIEW.md)**: 프로젝트 전체 구조 및 설계 철학
+- **[테스트 가이드](docs/TEST_GUIDE.md)**: 테스트 구조 및 실행 방법
+- **[데모 가이드](docs/DEMO_GUIDE.md)**: 데모 사용법 및 기능 시연
+- **[정리 요약](docs/CLEANUP_SUMMARY.md)**: 프로젝트 구조 정리 내역
+- **[단위 테스트 요약](docs/UNIT_TEST_SUMMARY.md)**: 단위 테스트 구현 및 결과
+- **[통합 테스트 요약](docs/INTEGRATION_TEST_SUMMARY.md)**: 통합 테스트 구현 및 결과
+- **[최종 통합 요약](docs/FINAL_INTEGRATION_SUMMARY.md)**: 최종 검증 및 완료 보고서
+
 ## 📞 지원
 
 문제가 발생하거나 제안사항이 있으시면 GitHub Issues를 통해 연락해 주세요.
@@ -343,13 +397,15 @@ python test/test_todo_service.py
 ## 🎯 개발 현황
 
 ### 완료된 주요 태스크
-- ✅ **Task 1-16**: 모든 핵심 기능 구현 완료
+- ✅ **Task 1-20**: 모든 핵심 기능 구현 완료
 - ✅ **GUI 시스템**: 완전한 그래픽 인터페이스 구현
 - ✅ **서브태스크 시스템**: 계층적 할일 관리 기능
+- ✅ **목표 날짜 기능**: 완전한 날짜 관리 및 알림 시스템
 - ✅ **자동 저장/백업**: 데이터 안전성 보장 시스템
 - ✅ **포괄적 테스트**: 200개 이상의 테스트 케이스
 - ✅ **사용자 경험**: UX 최적화 및 접근성 개선
 - ✅ **성능 최적화**: 대용량 데이터 처리 최적화
+- ✅ **최종 통합**: 모든 기능의 완전한 통합 및 검증
 
 ### 기술 스택
 - **언어**: Python 3.7+

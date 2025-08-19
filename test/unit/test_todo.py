@@ -167,17 +167,23 @@ class TestTodo(unittest.TestCase):
                     'todo_id': 1,
                     'title': "하위 작업 1",
                     'is_completed': False,
-                    'created_at': "2025-01-08T10:35:00"
+                    'created_at': "2025-01-08T10:35:00",
+                    'due_date': None,
+                    'completed_at': None
                 },
                 {
                     'id': 2,
                     'todo_id': 1,
                     'title': "하위 작업 2",
                     'is_completed': True,
-                    'created_at': "2025-01-08T10:40:00"
+                    'created_at': "2025-01-08T10:40:00",
+                    'due_date': None,
+                    'completed_at': None
                 }
             ],
-            'is_expanded': True
+            'is_expanded': True,
+            'due_date': None,
+            'completed_at': None
         }
         
         self.assertEqual(result, expected)
@@ -238,6 +244,109 @@ class TestTodo(unittest.TestCase):
         todo = Todo.from_dict(data)
         
         self.assertTrue(todo.is_expanded)  # 기본값
+    
+    def test_todo_initialization_with_due_date(self):
+        """목표 날짜가 포함된 Todo 객체 초기화 테스트"""
+        due_date = datetime(2025, 1, 15, 18, 0, 0)
+        todo = Todo(
+            id=1,
+            title="목표 날짜 할일",
+            created_at=datetime(2025, 1, 8, 10, 30, 0),
+            folder_path="todo_folders/todo_1_목표_날짜_할일",
+            due_date=due_date
+        )
+        
+        self.assertEqual(todo.due_date, due_date)
+        self.assertIsNone(todo.completed_at)
+    
+    def test_to_dict_with_due_date(self):
+        """목표 날짜가 포함된 Todo 객체의 딕셔너리 직렬화 테스트"""
+        due_date = datetime(2025, 1, 15, 18, 0, 0)
+        self.todo.due_date = due_date
+        
+        result = self.todo.to_dict()
+        
+        self.assertEqual(result['due_date'], "2025-01-15T18:00:00")
+        self.assertIsNone(result['completed_at'])
+    
+    def test_to_dict_without_due_date(self):
+        """목표 날짜가 없는 Todo 객체의 딕셔너리 직렬화 테스트"""
+        result = self.todo.to_dict()
+        
+        self.assertIsNone(result['due_date'])
+        self.assertIsNone(result['completed_at'])
+    
+    def test_from_dict_with_due_date(self):
+        """목표 날짜가 포함된 딕셔너리에서 Todo 객체 역직렬화 테스트"""
+        data = {
+            'id': 1,
+            'title': "테스트 할일",
+            'created_at': "2025-01-08T10:30:00",
+            'folder_path': "todo_folders/todo_1_테스트_할일",
+            'subtasks': [],
+            'is_expanded': True,
+            'due_date': "2025-01-15T18:00:00",
+            'completed_at': None
+        }
+        
+        todo = Todo.from_dict(data)
+        
+        self.assertEqual(todo.due_date, datetime(2025, 1, 15, 18, 0, 0))
+        self.assertIsNone(todo.completed_at)
+    
+    def test_from_dict_with_completed_at(self):
+        """완료 날짜가 포함된 딕셔너리에서 Todo 객체 역직렬화 테스트"""
+        data = {
+            'id': 1,
+            'title': "테스트 할일",
+            'created_at': "2025-01-08T10:30:00",
+            'folder_path': "todo_folders/todo_1_테스트_할일",
+            'subtasks': [],
+            'is_expanded': True,
+            'due_date': "2025-01-15T18:00:00",
+            'completed_at': "2025-01-14T16:30:00"
+        }
+        
+        todo = Todo.from_dict(data)
+        
+        self.assertEqual(todo.due_date, datetime(2025, 1, 15, 18, 0, 0))
+        self.assertEqual(todo.completed_at, datetime(2025, 1, 14, 16, 30, 0))
+    
+    def test_from_dict_backward_compatibility(self):
+        """기존 데이터 구조와의 하위 호환성 테스트 (due_date, completed_at 필드 없음)"""
+        data = {
+            'id': 1,
+            'title': "기존 할일",
+            'created_at': "2025-01-08T10:30:00",
+            'folder_path': "todo_folders/todo_1_기존_할일",
+            'subtasks': [],
+            'is_expanded': True
+        }
+        
+        todo = Todo.from_dict(data)
+        
+        self.assertEqual(todo.id, 1)
+        self.assertEqual(todo.title, "기존 할일")
+        self.assertIsNone(todo.due_date)
+        self.assertIsNone(todo.completed_at)
+    
+    def test_from_dict_null_due_date(self):
+        """null 값의 목표 날짜 처리 테스트"""
+        data = {
+            'id': 1,
+            'title': "테스트 할일",
+            'created_at': "2025-01-08T10:30:00",
+            'folder_path': "todo_folders/todo_1_테스트_할일",
+            'subtasks': [],
+            'is_expanded': True,
+            'due_date': None,
+            'completed_at': None
+        }
+        
+        todo = Todo.from_dict(data)
+        
+        self.assertIsNone(todo.due_date)
+        self.assertIsNone(todo.completed_at)
 
 
 if __name__ == '__main__':

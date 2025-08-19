@@ -1,0 +1,437 @@
+"""
+접근성 개선 기능 데모
+
+Task 19: 사용자 경험 개선 및 접근성 향상 데모
+- 키보드 단축키 추가 (빠른 목표 날짜 설정)
+- 색맹 사용자를 위한 패턴/아이콘 추가
+- 툴팁 및 도움말 메시지 추가
+- 오류 메시지 및 사용자 가이드 개선
+"""
+
+import tkinter as tk
+from tkinter import ttk
+import sys
+import os
+from datetime import datetime, timedelta
+
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.color_utils import ColorUtils
+from gui.components import UrgencyIndicator, DueDateLabel, DateTimeWidget
+from gui.dialogs import show_error_dialog, show_warning_dialog, show_info_dialog
+
+
+class AccessibilityDemo:
+    """접근성 개선 기능 데모 클래스"""
+    
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("접근성 개선 기능 데모")
+        self.root.geometry("800x600")
+        
+        self.setup_ui()
+        self.setup_keyboard_shortcuts()
+    
+    def setup_ui(self):
+        """UI 구성"""
+        # 메인 프레임
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 제목
+        title_label = ttk.Label(main_frame, text="접근성 개선 기능 데모", 
+                               font=("Arial", 16, "bold"))
+        title_label.pack(pady=(0, 20))
+        
+        # 탭 컨트롤
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # 각 탭 생성
+        self.create_color_accessibility_tab(notebook)
+        self.create_keyboard_shortcuts_tab(notebook)
+        self.create_tooltips_tab(notebook)
+        self.create_error_messages_tab(notebook)
+        
+        # 도움말 버튼
+        help_frame = ttk.Frame(main_frame)
+        help_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(help_frame, text="접근성 도움말 (Alt+F1)", 
+                  command=self.show_accessibility_help).pack(side=tk.LEFT)
+        ttk.Button(help_frame, text="일반 도움말 (F1)", 
+                  command=self.show_general_help).pack(side=tk.LEFT, padx=(10, 0))
+    
+    def create_color_accessibility_tab(self, notebook):
+        """색상 접근성 탭 생성"""
+        tab = ttk.Frame(notebook)
+        notebook.add(tab, text="색상 접근성")
+        
+        # 스크롤 가능한 프레임
+        canvas = tk.Canvas(tab)
+        scrollbar = ttk.Scrollbar(tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # 설명
+        desc_label = ttk.Label(scrollable_frame, 
+                              text="색맹 사용자를 위한 패턴/아이콘과 함께 색상 표시",
+                              font=("Arial", 12, "bold"))
+        desc_label.pack(pady=(10, 20))
+        
+        # 긴급도별 표시 예제
+        urgency_levels = ['overdue', 'urgent', 'warning', 'normal', 'completed']
+        urgency_names = ['지연됨', '긴급', '주의', '일반', '완료됨']
+        
+        for level, name in zip(urgency_levels, urgency_names):
+            frame = ttk.LabelFrame(scrollable_frame, text=f"{name} ({level})", padding="10")
+            frame.pack(fill=tk.X, pady=5)
+            
+            # 색상 정보
+            color = ColorUtils.get_urgency_color(level)
+            bg_color = ColorUtils.get_urgency_background_color(level)
+            
+            color_frame = ttk.Frame(frame)
+            color_frame.pack(fill=tk.X, pady=5)
+            
+            ttk.Label(color_frame, text=f"색상: {color}").pack(side=tk.LEFT)
+            ttk.Label(color_frame, text=f"배경색: {bg_color}").pack(side=tk.LEFT, padx=(20, 0))
+            
+            # 접근성 정보
+            patterns = ColorUtils.get_accessibility_patterns()
+            symbols = ColorUtils.get_accessibility_symbols()
+            descriptions = ColorUtils.get_accessibility_descriptions()
+            
+            access_frame = ttk.Frame(frame)
+            access_frame.pack(fill=tk.X, pady=5)
+            
+            ttk.Label(access_frame, text=f"패턴: {patterns.get(level, '')}").pack(side=tk.LEFT)
+            ttk.Label(access_frame, text=f"심볼: {symbols.get(level, '')}").pack(side=tk.LEFT, padx=(20, 0))
+            
+            desc_text = descriptions.get(level, '')
+            ttk.Label(access_frame, text=f"설명: {desc_text}").pack(side=tk.LEFT, padx=(20, 0))
+            
+            # 실제 컴포넌트 예제
+            component_frame = ttk.Frame(frame)
+            component_frame.pack(fill=tk.X, pady=10)
+            
+            ttk.Label(component_frame, text="실제 표시:").pack(side=tk.LEFT)
+            
+            # 긴급도 표시기
+            indicator = UrgencyIndicator(component_frame, urgency_level=level, show_pattern=True)
+            indicator.pack(side=tk.LEFT, padx=(10, 0))
+            
+            # 목표 날짜 레이블 (완료된 경우 제외)
+            if level != 'completed':
+                if level == 'overdue':
+                    due_date = datetime.now() - timedelta(days=1)
+                elif level == 'urgent':
+                    due_date = datetime.now() + timedelta(hours=12)
+                elif level == 'warning':
+                    due_date = datetime.now() + timedelta(days=2)
+                else:
+                    due_date = datetime.now() + timedelta(days=7)
+                
+                date_label = DueDateLabel(component_frame, due_date=due_date)
+                date_label.pack(side=tk.LEFT, padx=(20, 0))
+            else:
+                completed_label = DueDateLabel(component_frame, 
+                                             due_date=datetime.now() - timedelta(days=1),
+                                             completed_at=datetime.now())
+                completed_label.pack(side=tk.LEFT, padx=(20, 0))
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+    
+    def create_keyboard_shortcuts_tab(self, notebook):
+        """키보드 단축키 탭 생성"""
+        tab = ttk.Frame(notebook)
+        notebook.add(tab, text="키보드 단축키")
+        
+        # 설명
+        desc_label = ttk.Label(tab, 
+                              text="빠른 목표 날짜 설정 및 접근성 단축키",
+                              font=("Arial", 12, "bold"))
+        desc_label.pack(pady=(10, 20))
+        
+        # 단축키 목록
+        shortcuts_frame = ttk.LabelFrame(tab, text="빠른 목표 날짜 설정 단축키", padding="10")
+        shortcuts_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        shortcuts = [
+            ("Ctrl+D", "선택된 할일의 목표 날짜를 오늘 18:00으로 설정"),
+            ("Ctrl+Shift+D", "선택된 할일의 목표 날짜를 내일 18:00으로 설정"),
+            ("Ctrl+Alt+D", "선택된 할일의 목표 날짜를 이번 주말로 설정"),
+            ("Ctrl+R", "선택된 할일의 목표 날짜 제거"),
+        ]
+        
+        for shortcut, description in shortcuts:
+            shortcut_frame = ttk.Frame(shortcuts_frame)
+            shortcut_frame.pack(fill=tk.X, pady=2)
+            
+            ttk.Label(shortcut_frame, text=shortcut, font=("Courier", 10, "bold")).pack(side=tk.LEFT)
+            ttk.Label(shortcut_frame, text=": " + description).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # 접근성 단축키
+        access_shortcuts_frame = ttk.LabelFrame(tab, text="접근성 단축키", padding="10")
+        access_shortcuts_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        access_shortcuts = [
+            ("Alt+F1", "접근성 도움말 표시"),
+            ("F1", "일반 도움말 표시"),
+            ("Ctrl+F", "검색 박스로 포커스 이동"),
+            ("Esc", "검색 클리어 후 트리로 포커스 이동"),
+            ("Tab", "다음 UI 요소로 포커스 이동"),
+            ("Shift+Tab", "이전 UI 요소로 포커스 이동"),
+        ]
+        
+        for shortcut, description in access_shortcuts:
+            shortcut_frame = ttk.Frame(access_shortcuts_frame)
+            shortcut_frame.pack(fill=tk.X, pady=2)
+            
+            ttk.Label(shortcut_frame, text=shortcut, font=("Courier", 10, "bold")).pack(side=tk.LEFT)
+            ttk.Label(shortcut_frame, text=": " + description).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # 테스트 버튼들
+        test_frame = ttk.LabelFrame(tab, text="단축키 테스트", padding="10")
+        test_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        ttk.Label(test_frame, text="아래 버튼들을 클릭하거나 해당 단축키를 사용해보세요:").pack(pady=(0, 10))
+        
+        button_frame = ttk.Frame(test_frame)
+        button_frame.pack()
+        
+        ttk.Button(button_frame, text="오늘로 설정 (Ctrl+D)", 
+                  command=lambda: self.show_shortcut_demo("오늘")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="내일로 설정 (Ctrl+Shift+D)", 
+                  command=lambda: self.show_shortcut_demo("내일")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="접근성 도움말 (Alt+F1)", 
+                  command=self.show_accessibility_help).pack(side=tk.LEFT, padx=5)
+    
+    def create_tooltips_tab(self, notebook):
+        """툴팁 탭 생성"""
+        tab = ttk.Frame(notebook)
+        notebook.add(tab, text="툴팁 및 도움말")
+        
+        # 설명
+        desc_label = ttk.Label(tab, 
+                              text="향상된 툴팁과 도움말 메시지",
+                              font=("Arial", 12, "bold"))
+        desc_label.pack(pady=(10, 20))
+        
+        # 툴팁 예제
+        tooltip_frame = ttk.LabelFrame(tab, text="툴팁 예제", padding="10")
+        tooltip_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        ttk.Label(tooltip_frame, text="마우스를 아래 요소들 위에 올려보세요:").pack(pady=(0, 10))
+        
+        # 긴급도 표시기들 (툴팁 포함)
+        indicators_frame = ttk.Frame(tooltip_frame)
+        indicators_frame.pack(pady=10)
+        
+        for level, name in [('overdue', '지연됨'), ('urgent', '긴급'), ('warning', '주의')]:
+            indicator = UrgencyIndicator(indicators_frame, urgency_level=level, show_pattern=True)
+            indicator.pack(side=tk.LEFT, padx=10)
+            
+            # 툴팁 추가
+            self.create_tooltip(indicator, f"{name}: {ColorUtils.get_accessibility_descriptions()[level]}")
+        
+        # 목표 날짜 레이블들 (툴팁 포함)
+        dates_frame = ttk.Frame(tooltip_frame)
+        dates_frame.pack(pady=10)
+        
+        due_dates = [
+            (datetime.now() - timedelta(days=1), "지연된 할일"),
+            (datetime.now() + timedelta(hours=12), "긴급한 할일"),
+            (datetime.now() + timedelta(days=2), "주의 필요한 할일")
+        ]
+        
+        for due_date, desc in due_dates:
+            label = DueDateLabel(dates_frame, due_date=due_date)
+            label.pack(side=tk.LEFT, padx=10)
+    
+    def create_error_messages_tab(self, notebook):
+        """오류 메시지 탭 생성"""
+        tab = ttk.Frame(notebook)
+        notebook.add(tab, text="오류 메시지 개선")
+        
+        # 설명
+        desc_label = ttk.Label(tab, 
+                              text="향상된 오류 메시지 및 사용자 가이드",
+                              font=("Arial", 12, "bold"))
+        desc_label.pack(pady=(10, 20))
+        
+        # 오류 메시지 예제
+        error_frame = ttk.LabelFrame(tab, text="오류 메시지 예제", padding="10")
+        error_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        ttk.Label(error_frame, text="다양한 오류 상황에 대한 향상된 메시지를 확인해보세요:").pack(pady=(0, 10))
+        
+        button_frame = ttk.Frame(error_frame)
+        button_frame.pack()
+        
+        ttk.Button(button_frame, text="파일 오류", 
+                  command=lambda: show_error_dialog(self.root, "파일을 열 수 없습니다")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="날짜 오류", 
+                  command=lambda: show_error_dialog(self.root, "잘못된 날짜 형식입니다")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="네트워크 오류", 
+                  command=lambda: show_error_dialog(self.root, "서버에 연결할 수 없습니다")).pack(side=tk.LEFT, padx=5)
+        
+        # 경고 메시지 예제
+        warning_frame = ttk.LabelFrame(tab, text="경고 메시지 예제", padding="10")
+        warning_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        ttk.Label(warning_frame, text="중요한 작업에 대한 향상된 경고 메시지:").pack(pady=(0, 10))
+        
+        warning_button_frame = ttk.Frame(warning_frame)
+        warning_button_frame.pack()
+        
+        ttk.Button(warning_button_frame, text="삭제 경고", 
+                  command=lambda: show_warning_dialog(self.root, "중요한 데이터를 삭제합니다")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(warning_button_frame, text="저장 경고", 
+                  command=lambda: show_warning_dialog(self.root, "기존 파일을 덮어쓰려고 합니다")).pack(side=tk.LEFT, padx=5)
+        
+        # 사용자 가이드
+        guide_frame = ttk.LabelFrame(tab, text="사용자 가이드 개선", padding="10")
+        guide_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        guide_text = """향상된 사용자 가이드 특징:
+
+• 구체적인 해결 방법 제시
+• 단계별 안내 제공
+• 관련 도움말 링크 포함
+• 예방 조치 안내
+• 대안 방법 제시"""
+        
+        ttk.Label(guide_frame, text=guide_text, justify=tk.LEFT).pack(anchor=tk.W)
+    
+    def setup_keyboard_shortcuts(self):
+        """키보드 단축키 설정"""
+        # 빠른 목표 날짜 설정 단축키
+        self.root.bind('<Control-d>', lambda e: self.show_shortcut_demo("오늘"))
+        self.root.bind('<Control-Shift-d>', lambda e: self.show_shortcut_demo("내일"))
+        self.root.bind('<Control-Alt-d>', lambda e: self.show_shortcut_demo("이번 주말"))
+        self.root.bind('<Control-r>', lambda e: self.show_shortcut_demo("제거"))
+        
+        # 접근성 도움말
+        self.root.bind('<Alt-F1>', lambda e: self.show_accessibility_help())
+        self.root.bind('<F1>', lambda e: self.show_general_help())
+    
+    def show_shortcut_demo(self, action):
+        """단축키 데모 표시"""
+        message = f"단축키 데모: 목표 날짜를 '{action}'(으)로 설정하는 기능입니다.\n\n"
+        message += "실제 할일 관리자에서는 선택된 할일의 목표 날짜가 변경됩니다."
+        
+        show_info_dialog(self.root, message, f"단축키 데모 - {action}")
+    
+    def show_accessibility_help(self):
+        """접근성 도움말 표시"""
+        help_text = """접근성 기능 및 키보드 단축키
+
+=== 빠른 목표 날짜 설정 ===
+• Ctrl+D: 선택된 할일의 목표 날짜를 오늘 18:00으로 설정
+• Ctrl+Shift+D: 선택된 할일의 목표 날짜를 내일 18:00으로 설정
+• Ctrl+Alt+D: 선택된 할일의 목표 날짜를 이번 주말로 설정
+• Ctrl+R: 선택된 할일의 목표 날짜 제거
+
+=== 접근성 기능 ===
+• 색상과 함께 패턴/아이콘으로 긴급도 표시
+• 키보드만으로 모든 기능 접근 가능
+• 스크린 리더 지원을 위한 접근성 레이블
+• 툴팁으로 상세한 도움말 제공
+
+=== 긴급도 표시 ===
+• 🔴 !!! : 지연됨 (빨간색)
+• 🟠 !! : 24시간 이내 마감 (주황색)
+• 🟡 ! : 3일 이내 마감 (노란색)
+• ⚪ : 일반 우선순위 (검은색)
+• ✅ ✓ : 완료됨 (회색)
+
+=== 키보드 네비게이션 ===
+• Tab/Shift+Tab: UI 요소 간 이동
+• Enter: 선택된 항목 실행
+• Esc: 취소 또는 이전 상태로
+• F1: 일반 도움말
+• Alt+F1: 접근성 도움말"""
+        
+        show_info_dialog(self.root, help_text, "접근성 도움말")
+    
+    def show_general_help(self):
+        """일반 도움말 표시"""
+        help_text = """접근성 개선 기능 데모 도움말
+
+이 데모는 할일 관리자의 접근성 개선 기능을 보여줍니다.
+
+=== 탭 설명 ===
+• 색상 접근성: 색맹 사용자를 위한 패턴/아이콘 표시
+• 키보드 단축키: 빠른 목표 날짜 설정 단축키
+• 툴팁 및 도움말: 향상된 툴팁과 도움말 메시지
+• 오류 메시지 개선: 더 나은 오류 메시지와 사용자 가이드
+
+=== 사용법 ===
+• 각 탭을 클릭하여 다양한 기능을 확인하세요
+• 마우스를 UI 요소 위에 올려 툴팁을 확인하세요
+• 키보드 단축키를 사용해보세요
+• 버튼을 클릭하여 예제를 확인하세요
+
+=== 키보드 단축키 ===
+• F1: 이 도움말 표시
+• Alt+F1: 접근성 도움말 표시
+• Ctrl+D: 단축키 데모 (오늘)
+• Ctrl+Shift+D: 단축키 데모 (내일)"""
+        
+        show_info_dialog(self.root, help_text, "도움말")
+    
+    def create_tooltip(self, widget, text):
+        """툴팁 생성"""
+        def show_tooltip(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root + 10}+{event.y_root + 10}")
+            
+            label = tk.Label(tooltip, text=text, background="lightyellow", 
+                           relief="solid", borderwidth=1, font=("Arial", 9),
+                           justify=tk.LEFT)
+            label.pack()
+            
+            # 3초 후 자동 사라짐
+            tooltip.after(3000, tooltip.destroy)
+            
+            # 마우스가 위젯을 벗어나면 즉시 사라짐
+            def hide_tooltip(event):
+                tooltip.destroy()
+            
+            widget.bind('<Leave>', hide_tooltip, add='+')
+        
+        widget.bind('<Enter>', show_tooltip, add='+')
+    
+    def run(self):
+        """데모 실행"""
+        self.root.mainloop()
+
+
+def main():
+    """메인 함수"""
+    print("접근성 개선 기능 데모를 시작합니다...")
+    print("=" * 50)
+    print("주요 기능:")
+    print("• 색맹 사용자를 위한 패턴/아이콘 추가")
+    print("• 키보드 단축키 추가 (빠른 목표 날짜 설정)")
+    print("• 툴팁 및 도움말 메시지 추가")
+    print("• 오류 메시지 및 사용자 가이드 개선")
+    print("=" * 50)
+    
+    demo = AccessibilityDemo()
+    demo.run()
+
+
+if __name__ == "__main__":
+    main()

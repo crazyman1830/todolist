@@ -82,6 +82,8 @@ class StorageService:
         """
         할일 목록을 JSON 파일에 저장
         
+        Requirements 1.3, 1.4: 새로운 필드들 처리 및 데이터 무결성 보장
+        
         Args:
             todos: 저장할 할일 목록
             
@@ -93,6 +95,15 @@ class StorageService:
             if not isinstance(todos, list):
                 raise ValueError("todos는 리스트여야 합니다")
             
+            # 목표 날짜 필드 유효성 검사
+            validation_result = self.validate_due_date_fields(todos)
+            if not validation_result['valid']:
+                print("목표 날짜 필드 유효성 검사 실패:")
+                for issue in validation_result['issues']:
+                    print(f"  - {issue}")
+                # 유효성 검사 실패 시에도 복구 시도
+                print("데이터 복구를 시도합니다...")
+            
             # 데이터 무결성 검사 및 복구
             todos = self._validate_and_repair_data(todos)
             
@@ -100,11 +111,32 @@ class StorageService:
             next_id = max([todo.id for todo in todos], default=0) + 1
             next_subtask_id = self._calculate_next_subtask_id(todos)
             
-            # 데이터 구조 생성
+            # 현재 설정 로드 (기존 파일에서)
+            current_settings = {
+                'show_startup_notifications': True,
+                'default_due_time': '18:00',
+                'date_format': 'relative',
+                'auto_backup_enabled': True,
+                'backup_retention_days': 30
+            }
+            
+            if self.file_exists():
+                try:
+                    with open(self.file_path, 'r', encoding='utf-8') as file:
+                        existing_data = json.load(file)
+                        if 'settings' in existing_data:
+                            current_settings.update(existing_data['settings'])
+                except Exception:
+                    pass  # 기존 설정 로드 실패 시 기본값 사용
+            
+            # 데이터 구조 생성 (새 필드들 포함)
             data = {
                 "todos": [todo.to_dict() for todo in todos],
                 "next_id": next_id,
-                "next_subtask_id": next_subtask_id
+                "next_subtask_id": next_subtask_id,
+                "data_version": "2.0",
+                "settings": current_settings,
+                "last_saved": datetime.now().isoformat()
             }
             
             # 백업 파일 생성 (기존 파일이 있는 경우)
@@ -116,6 +148,12 @@ class StorageService:
             try:
                 with open(temp_file, 'w', encoding='utf-8') as file:
                     json.dump(data, file, ensure_ascii=False, indent=2, default=str)
+                
+                # 저장된 데이터 검증
+                with open(temp_file, 'r', encoding='utf-8') as file:
+                    verification_data = json.load(file)
+                    if len(verification_data.get('todos', [])) != len(todos):
+                        raise ValueError("저장된 데이터 검증 실패: 할일 개수 불일치")
                 
                 # 임시 파일을 실제 파일로 이동
                 if os.path.exists(self.file_path):
@@ -131,6 +169,16 @@ class StorageService:
                     except:
                         pass
                 raise e
+            
+            # 저장 후 통계 출력
+            stats = validation_result['statistics']
+            if stats['todos_with_due_date'] > 0 or stats['subtasks_with_due_date'] > 0:
+                print(f"목표 날짜 데이터 저장 완료:")
+                print(f"  - 목표 날짜가 있는 할일: {stats['todos_with_due_date']}/{stats['total_todos']}")
+                print(f"  - 목표 날짜가 있는 하위작업: {stats['subtasks_with_due_date']}/{stats['total_subtasks']}")
+                if stats['overdue_todos'] > 0 or stats['overdue_subtasks'] > 0:
+                    print(f"  - 지연된 할일: {stats['overdue_todos']}")
+                    print(f"  - 지연된 하위작업: {stats['overdue_subtasks']}")
             
             return True
             
@@ -327,7 +375,9 @@ class StorageService:
     
     def _migrate_legacy_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        기존 CLI 데이터 파일을 새로운 형식으로 자동 변환
+        기존 데이터 파일을 새로운 형식으로 자동 변환
+        
+        Requirements 1.3, 1.4: 기존 데이터 호환성 보장 및 자동 마이그레이션
         
         Args:
             data: 로드된 원본 데이터
@@ -336,39 +386,103 @@ class StorageService:
             변환된 데이터
         """
         migrated = False
+        migration_log = []
         
         # next_subtask_id 필드가 없으면 추가
         if 'next_subtask_id' not in data:
             data['next_subtask_id'] = 1
             migrated = True
-            print("데이터 마이그레이션: next_subtask_id 필드 추가")
+            migration_log.append("next_subtask_id 필드 추가")
         
-        # 각 할일에 subtasks 필드가 없으면 빈 배열 추가
+        # settings 필드가 없으면 기본값으로 추가
+        if 'settings' not in data:
+            data['settings'] = {
+                'show_startup_notifications': True,
+                'default_due_time': '18:00',
+                'date_format': 'relative',
+                'auto_backup_enabled': True,
+                'backup_retention_days': 30
+            }
+            migrated = True
+            migration_log.append("settings 필드 추가")
+        
+        # 각 할일에 필요한 필드들 추가
         if 'todos' in data and isinstance(data['todos'], list):
-            for todo_data in data['todos']:
+            for i, todo_data in enumerate(data['todos']):
                 if isinstance(todo_data, dict):
+                    # subtasks 필드가 없으면 빈 배열 추가
                     if 'subtasks' not in todo_data:
                         todo_data['subtasks'] = []
                         migrated = True
+                        migration_log.append(f"할일 {todo_data.get('id', i)}: subtasks 필드 추가")
                     
+                    # is_expanded 필드가 없으면 기본값 추가
                     if 'is_expanded' not in todo_data:
                         todo_data['is_expanded'] = True
                         migrated = True
+                        migration_log.append(f"할일 {todo_data.get('id', i)}: is_expanded 필드 추가")
+                    
+                    # due_date 필드가 없으면 null로 추가
+                    if 'due_date' not in todo_data:
+                        todo_data['due_date'] = None
+                        migrated = True
+                        migration_log.append(f"할일 {todo_data.get('id', i)}: due_date 필드 추가")
+                    
+                    # completed_at 필드가 없으면 null로 추가
+                    if 'completed_at' not in todo_data:
+                        todo_data['completed_at'] = None
+                        migrated = True
+                        migration_log.append(f"할일 {todo_data.get('id', i)}: completed_at 필드 추가")
+                    
+                    # 하위 작업들에도 새 필드 추가
+                    if 'subtasks' in todo_data and isinstance(todo_data['subtasks'], list):
+                        for j, subtask_data in enumerate(todo_data['subtasks']):
+                            if isinstance(subtask_data, dict):
+                                # due_date 필드가 없으면 null로 추가
+                                if 'due_date' not in subtask_data:
+                                    subtask_data['due_date'] = None
+                                    migrated = True
+                                    migration_log.append(f"하위작업 {subtask_data.get('id', j)}: due_date 필드 추가")
+                                
+                                # completed_at 필드가 없으면 null로 추가
+                                if 'completed_at' not in subtask_data:
+                                    subtask_data['completed_at'] = None
+                                    migrated = True
+                                    migration_log.append(f"하위작업 {subtask_data.get('id', j)}: completed_at 필드 추가")
+        
+        # 데이터 버전 정보 추가
+        if 'data_version' not in data:
+            data['data_version'] = '2.0'  # 목표 날짜 기능이 추가된 버전
+            migrated = True
+            migration_log.append("데이터 버전 정보 추가")
         
         # 마이그레이션이 발생했으면 파일에 저장
         if migrated:
             try:
+                # 마이그레이션 전 백업 생성
+                self._create_migration_backup()
+                
+                # 마이그레이션된 데이터 저장
                 with open(self.file_path, 'w', encoding='utf-8') as file:
                     json.dump(data, file, ensure_ascii=False, indent=2, default=str)
-                print("데이터 마이그레이션 완료: 파일이 새로운 형식으로 업데이트되었습니다.")
+                
+                print("데이터 마이그레이션 완료:")
+                for log_entry in migration_log:
+                    print(f"  - {log_entry}")
+                print("파일이 새로운 형식으로 업데이트되었습니다.")
+                
             except Exception as e:
                 print(f"마이그레이션된 데이터 저장 중 오류 발생: {e}")
+                # 마이그레이션 실패 시 백업에서 복구 시도
+                self._restore_migration_backup()
         
         return data
     
     def _validate_and_repair_data(self, todos: List[Todo]) -> List[Todo]:
         """
         데이터 무결성 검사 및 복구
+        
+        Requirements 1.3, 1.4: 데이터 무결성 검사 및 복구 로직
         
         Args:
             todos: 검사할 할일 목록
@@ -378,6 +492,7 @@ class StorageService:
         """
         repaired_todos = []
         repair_count = 0
+        repair_log = []
         
         # 할일 ID 중복 제거
         seen_todo_ids = set()
@@ -387,11 +502,55 @@ class StorageService:
             if todo.id in seen_todo_ids:
                 # 새로운 ID 할당
                 max_id = max(seen_todo_ids) if seen_todo_ids else 0
+                old_id = todo.id
                 todo.id = max_id + 1
                 repair_count += 1
-                print(f"중복된 할일 ID 수정: {todo.id}")
+                repair_log.append(f"중복된 할일 ID 수정: {old_id} -> {todo.id}")
             
             seen_todo_ids.add(todo.id)
+            
+            # 목표 날짜 무결성 검사
+            if todo.due_date is not None:
+                try:
+                    # 목표 날짜가 유효한 datetime 객체인지 확인
+                    if not isinstance(todo.due_date, datetime):
+                        # 문자열인 경우 datetime으로 변환 시도
+                        if isinstance(todo.due_date, str):
+                            todo.due_date = datetime.fromisoformat(todo.due_date)
+                            repair_count += 1
+                            repair_log.append(f"할일 {todo.id}: due_date 형식 수정")
+                        else:
+                            # 변환할 수 없는 경우 None으로 설정
+                            todo.due_date = None
+                            repair_count += 1
+                            repair_log.append(f"할일 {todo.id}: 잘못된 due_date 제거")
+                except Exception:
+                    todo.due_date = None
+                    repair_count += 1
+                    repair_log.append(f"할일 {todo.id}: 손상된 due_date 제거")
+            
+            # 완료 날짜 무결성 검사
+            if todo.completed_at is not None:
+                try:
+                    if not isinstance(todo.completed_at, datetime):
+                        if isinstance(todo.completed_at, str):
+                            todo.completed_at = datetime.fromisoformat(todo.completed_at)
+                            repair_count += 1
+                            repair_log.append(f"할일 {todo.id}: completed_at 형식 수정")
+                        else:
+                            todo.completed_at = None
+                            repair_count += 1
+                            repair_log.append(f"할일 {todo.id}: 잘못된 completed_at 제거")
+                except Exception:
+                    todo.completed_at = None
+                    repair_count += 1
+                    repair_log.append(f"할일 {todo.id}: 손상된 completed_at 제거")
+            
+            # 논리적 일관성 검사: 완료된 할일의 경우 completed_at이 있어야 함
+            if todo.is_completed() and todo.completed_at is None:
+                todo.completed_at = datetime.now()
+                repair_count += 1
+                repair_log.append(f"할일 {todo.id}: 완료된 할일에 completed_at 추가")
             
             # 하위 작업 무결성 검사
             valid_subtasks = []
@@ -402,17 +561,64 @@ class StorageService:
                 if subtask.todo_id != todo.id:
                     subtask.todo_id = todo.id
                     repair_count += 1
-                    print(f"하위 작업 todo_id 수정: subtask {subtask.id} -> todo {todo.id}")
+                    repair_log.append(f"하위 작업 {subtask.id}: todo_id 수정 -> {todo.id}")
                 
                 # 하위 작업 ID 중복 검사
                 if subtask.id in seen_subtask_ids:
                     # 새로운 ID 할당
                     max_subtask_id = max(seen_subtask_ids) if seen_subtask_ids else 0
+                    old_id = subtask.id
                     subtask.id = max_subtask_id + 1
                     repair_count += 1
-                    print(f"중복된 하위 작업 ID 수정: {subtask.id}")
+                    repair_log.append(f"중복된 하위 작업 ID 수정: {old_id} -> {subtask.id}")
                 
                 seen_subtask_ids.add(subtask.id)
+                
+                # 하위 작업 목표 날짜 무결성 검사
+                if subtask.due_date is not None:
+                    try:
+                        if not isinstance(subtask.due_date, datetime):
+                            if isinstance(subtask.due_date, str):
+                                subtask.due_date = datetime.fromisoformat(subtask.due_date)
+                                repair_count += 1
+                                repair_log.append(f"하위작업 {subtask.id}: due_date 형식 수정")
+                            else:
+                                subtask.due_date = None
+                                repair_count += 1
+                                repair_log.append(f"하위작업 {subtask.id}: 잘못된 due_date 제거")
+                    except Exception:
+                        subtask.due_date = None
+                        repair_count += 1
+                        repair_log.append(f"하위작업 {subtask.id}: 손상된 due_date 제거")
+                
+                # 하위 작업 완료 날짜 무결성 검사
+                if subtask.completed_at is not None:
+                    try:
+                        if not isinstance(subtask.completed_at, datetime):
+                            if isinstance(subtask.completed_at, str):
+                                subtask.completed_at = datetime.fromisoformat(subtask.completed_at)
+                                repair_count += 1
+                                repair_log.append(f"하위작업 {subtask.id}: completed_at 형식 수정")
+                            else:
+                                subtask.completed_at = None
+                                repair_count += 1
+                                repair_log.append(f"하위작업 {subtask.id}: 잘못된 completed_at 제거")
+                    except Exception:
+                        subtask.completed_at = None
+                        repair_count += 1
+                        repair_log.append(f"하위작업 {subtask.id}: 손상된 completed_at 제거")
+                
+                # 하위 작업 논리적 일관성 검사
+                if subtask.is_completed and subtask.completed_at is None:
+                    subtask.completed_at = datetime.now()
+                    repair_count += 1
+                    repair_log.append(f"하위작업 {subtask.id}: 완료된 작업에 completed_at 추가")
+                
+                # 목표 날짜 논리적 검사: 하위 작업이 상위 할일보다 늦으면 경고
+                if (subtask.due_date is not None and todo.due_date is not None and 
+                    subtask.due_date > todo.due_date):
+                    repair_log.append(f"경고: 하위작업 {subtask.id}의 목표날짜가 상위 할일보다 늦음")
+                
                 valid_subtasks.append(subtask)
             
             todo.subtasks = valid_subtasks
@@ -420,6 +626,8 @@ class StorageService:
         
         if repair_count > 0:
             print(f"데이터 무결성 복구 완료: {repair_count}개 항목 수정")
+            for log_entry in repair_log:
+                print(f"  - {log_entry}")
         
         return repaired_todos
     
@@ -854,6 +1062,260 @@ class StorageService:
             print(f"데이터 무결성 복구 중 오류 발생: {e}")
             return False
     
+    def _create_migration_backup(self) -> None:
+        """
+        마이그레이션 전 백업 생성
+        
+        Requirements 1.4: 백업 및 복원 기능에 새 필드 포함
+        """
+        try:
+            if os.path.exists(self.file_path):
+                migration_backup_path = f"{self.file_path}.migration_backup"
+                import shutil
+                shutil.copy2(self.file_path, migration_backup_path)
+                print(f"마이그레이션 백업 생성: {migration_backup_path}")
+        except Exception as e:
+            print(f"마이그레이션 백업 생성 중 오류 발생: {e}")
+    
+    def _restore_migration_backup(self) -> None:
+        """
+        마이그레이션 백업에서 복구
+        
+        Requirements 1.4: 백업 및 복원 기능
+        """
+        try:
+            migration_backup_path = f"{self.file_path}.migration_backup"
+            if os.path.exists(migration_backup_path):
+                import shutil
+                shutil.copy2(migration_backup_path, self.file_path)
+                print("마이그레이션 백업에서 복구 완료")
+                # 백업 파일 삭제
+                os.remove(migration_backup_path)
+        except Exception as e:
+            print(f"마이그레이션 백업 복구 중 오류 발생: {e}")
+    
+    def validate_due_date_fields(self, todos: List[Todo]) -> Dict[str, Any]:
+        """
+        목표 날짜 필드의 유효성을 검사
+        
+        Requirements 1.3: 데이터 무결성 검사
+        
+        Args:
+            todos: 검사할 할일 목록
+            
+        Returns:
+            검사 결과 딕셔너리
+        """
+        validation_result = {
+            'valid': True,
+            'issues': [],
+            'warnings': [],
+            'statistics': {
+                'total_todos': len(todos),
+                'todos_with_due_date': 0,
+                'overdue_todos': 0,
+                'total_subtasks': 0,
+                'subtasks_with_due_date': 0,
+                'overdue_subtasks': 0
+            }
+        }
+        
+        now = datetime.now()
+        
+        for todo in todos:
+            # 할일 목표 날짜 검사
+            if todo.due_date is not None:
+                validation_result['statistics']['todos_with_due_date'] += 1
+                
+                # 목표 날짜 타입 검사
+                if not isinstance(todo.due_date, datetime):
+                    validation_result['valid'] = False
+                    validation_result['issues'].append(
+                        f"할일 {todo.id}: due_date가 datetime 타입이 아님"
+                    )
+                else:
+                    # 지연 여부 확인
+                    if todo.due_date < now and not todo.is_completed():
+                        validation_result['statistics']['overdue_todos'] += 1
+            
+            # 완료 날짜 검사
+            if todo.completed_at is not None:
+                if not isinstance(todo.completed_at, datetime):
+                    validation_result['valid'] = False
+                    validation_result['issues'].append(
+                        f"할일 {todo.id}: completed_at이 datetime 타입이 아님"
+                    )
+                elif todo.due_date is not None and todo.completed_at > todo.due_date:
+                    validation_result['warnings'].append(
+                        f"할일 {todo.id}: 목표날짜 이후에 완료됨"
+                    )
+            
+            # 하위 작업 검사
+            for subtask in todo.subtasks:
+                validation_result['statistics']['total_subtasks'] += 1
+                
+                if subtask.due_date is not None:
+                    validation_result['statistics']['subtasks_with_due_date'] += 1
+                    
+                    # 하위 작업 목표 날짜 타입 검사
+                    if not isinstance(subtask.due_date, datetime):
+                        validation_result['valid'] = False
+                        validation_result['issues'].append(
+                            f"하위작업 {subtask.id}: due_date가 datetime 타입이 아님"
+                        )
+                    else:
+                        # 지연 여부 확인
+                        if subtask.due_date < now and not subtask.is_completed:
+                            validation_result['statistics']['overdue_subtasks'] += 1
+                        
+                        # 상위 할일과의 일관성 검사
+                        if (todo.due_date is not None and 
+                            subtask.due_date > todo.due_date):
+                            validation_result['warnings'].append(
+                                f"하위작업 {subtask.id}: 상위 할일보다 늦은 목표날짜"
+                            )
+                
+                # 하위 작업 완료 날짜 검사
+                if subtask.completed_at is not None:
+                    if not isinstance(subtask.completed_at, datetime):
+                        validation_result['valid'] = False
+                        validation_result['issues'].append(
+                            f"하위작업 {subtask.id}: completed_at이 datetime 타입이 아님"
+                        )
+        
+        return validation_result
+    
+    def export_data_with_due_dates(self, export_path: str, todos: List[Todo]) -> bool:
+        """
+        목표 날짜 필드를 포함한 데이터 내보내기
+        
+        Requirements 1.4: 백업 및 복원 기능에 새 필드 포함
+        
+        Args:
+            export_path: 내보낼 파일 경로
+            todos: 내보낼 할일 목록
+            
+        Returns:
+            내보내기 성공 여부
+        """
+        try:
+            # 내보내기 데이터 구성
+            export_data = {
+                'export_info': {
+                    'version': '2.0',
+                    'export_date': datetime.now().isoformat(),
+                    'total_todos': len(todos),
+                    'total_subtasks': sum(len(todo.subtasks) for todo in todos)
+                },
+                'todos': [todo.to_dict() for todo in todos],
+                'next_id': max([todo.id for todo in todos], default=0) + 1,
+                'next_subtask_id': self._calculate_next_subtask_id(todos),
+                'settings': {
+                    'show_startup_notifications': True,
+                    'default_due_time': '18:00',
+                    'date_format': 'relative'
+                }
+            }
+            
+            # 파일에 저장
+            with open(export_path, 'w', encoding='utf-8') as file:
+                json.dump(export_data, file, ensure_ascii=False, indent=2, default=str)
+            
+            print(f"데이터 내보내기 완료: {export_path}")
+            return True
+            
+        except Exception as e:
+            print(f"데이터 내보내기 중 오류 발생: {e}")
+            return False
+    
+    def import_data_with_due_dates(self, import_path: str) -> List[Todo]:
+        """
+        목표 날짜 필드를 포함한 데이터 가져오기
+        
+        Requirements 1.4: 백업 및 복원 기능에 새 필드 포함
+        
+        Args:
+            import_path: 가져올 파일 경로
+            
+        Returns:
+            가져온 할일 목록
+        """
+        try:
+            if not os.path.exists(import_path):
+                print(f"가져올 파일이 존재하지 않습니다: {import_path}")
+                return []
+            
+            with open(import_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+            
+            # 데이터 구조 검증
+            if not isinstance(data, dict) or 'todos' not in data:
+                print("가져올 파일의 형식이 올바르지 않습니다.")
+                return []
+            
+            # 마이그레이션 적용
+            data = self._migrate_legacy_data(data)
+            
+            # Todo 객체로 변환
+            todos = []
+            for todo_data in data['todos']:
+                try:
+                    todo = Todo.from_dict(todo_data)
+                    todos.append(todo)
+                except Exception as e:
+                    print(f"할일 데이터 변환 중 오류 (건너뜀): {e}")
+                    continue
+            
+            # 데이터 무결성 검사 및 복구
+            todos = self._validate_and_repair_data(todos)
+            
+            print(f"데이터 가져오기 완료: {len(todos)}개 할일")
+            return todos
+            
+        except Exception as e:
+            print(f"데이터 가져오기 중 오류 발생: {e}")
+            return []
+    
+    def cleanup_old_backups(self, retention_days: int = 30) -> int:
+        """
+        오래된 백업 파일들을 정리
+        
+        Requirements 1.4: 백업 관리 기능
+        
+        Args:
+            retention_days: 보관할 일수
+            
+        Returns:
+            삭제된 백업 파일 수
+        """
+        deleted_count = 0
+        cutoff_time = time.time() - (retention_days * 24 * 60 * 60)
+        
+        try:
+            directory = os.path.dirname(self.file_path) or "."
+            filename = os.path.basename(self.file_path)
+            
+            for file in os.listdir(directory):
+                if (file.startswith(f"{filename}.backup") or 
+                    file.startswith(f"{filename}.manual_backup")):
+                    
+                    file_path = os.path.join(directory, file)
+                    if os.path.getmtime(file_path) < cutoff_time:
+                        try:
+                            os.remove(file_path)
+                            deleted_count += 1
+                            print(f"오래된 백업 파일 삭제: {file}")
+                        except Exception as e:
+                            print(f"백업 파일 삭제 중 오류: {file}, {e}")
+            
+            if deleted_count > 0:
+                print(f"총 {deleted_count}개의 오래된 백업 파일을 삭제했습니다.")
+                
+        except Exception as e:
+            print(f"백업 정리 중 오류 발생: {e}")
+        
+        return deleted_count
+    
     def shutdown(self) -> None:
         """서비스 종료 시 정리 작업을 수행합니다."""
         # 자동 저장 타이머 중지
@@ -872,5 +1334,11 @@ class StorageService:
         
         # 복구 파일 정리
         self._cleanup_recovery_file()
+        
+        # 오래된 백업 정리 (30일 이상)
+        try:
+            self.cleanup_old_backups(30)
+        except Exception as e:
+            print(f"백업 정리 중 오류 발생: {e}")
         
         print("StorageService가 정상적으로 종료되었습니다.")

@@ -4,12 +4,16 @@ import json
 import os
 from typing import Optional
 from services.todo_service import TodoService
+from services.notification_service import NotificationService
 from gui.todo_tree import TodoTree
 from gui.components import StatusBar, SearchBox, FilterPanel, ProgressBar
 from gui.dialogs import (
     show_add_todo_dialog, show_edit_todo_dialog, show_add_subtask_dialog,
+    show_add_todo_dialog_with_due_date, show_edit_todo_dialog_with_due_date, 
+    show_add_subtask_dialog_with_due_date,
     show_delete_confirm_dialog, show_folder_delete_confirm_dialog,
-    show_error_dialog, show_info_dialog, show_folder_error_dialog
+    show_error_dialog, show_info_dialog, show_folder_error_dialog,
+    show_startup_notification_dialog
 )
 
 
@@ -18,6 +22,7 @@ class MainWindow:
     
     def __init__(self, todo_service: TodoService):
         self.todo_service = todo_service
+        self.notification_service = NotificationService(todo_service)
         self.root = tk.Tk()
         self.settings_file = "gui_settings.json"
         
@@ -60,6 +65,9 @@ class MainWindow:
         self.setup_toolbar()
         self.setup_main_content()
         self.setup_status_bar()
+        
+        # 실시간 상태바 업데이트 시작
+        self.start_status_bar_updates()
         
     def setup_menu_bar(self):
         """메뉴바 구현 (파일, 편집, 보기, 도움말)"""
@@ -113,6 +121,15 @@ class MainWindow:
         self.root.bind('<Escape>', lambda e: self._clear_search_and_focus_tree())
         self.root.bind('<Control-h>', lambda e: self.on_show_help())
         self.root.bind('<F1>', lambda e: self.on_show_help())
+        
+        # 빠른 목표 날짜 설정 단축키 (Requirements: 키보드 단축키 추가)
+        self.root.bind('<Control-d>', lambda e: self._quick_set_due_date_today())
+        self.root.bind('<Control-Shift-d>', lambda e: self._quick_set_due_date_tomorrow())
+        self.root.bind('<Control-Alt-d>', lambda e: self._quick_set_due_date_this_weekend())
+        self.root.bind('<Control-r>', lambda e: self._quick_remove_due_date())
+        
+        # 접근성 도움말 단축키
+        self.root.bind('<Alt-F1>', lambda e: self._show_accessibility_help())
         
         # Tab 순서 설정을 위한 포커스 체인 설정
         self._setup_focus_chain()
@@ -228,25 +245,71 @@ class MainWindow:
                 total_progress = sum(todo.get_completion_rate() for todo in todos)
                 overall_progress = total_progress / total_todos
             
+            # 목표 날짜 관련 정보 가져오기
+            status_summary = self.notification_service.get_status_bar_summary()
+            due_today_count = status_summary['due_today']
+            overdue_count = status_summary['overdue']
+            
             # 상태바 컴포넌트 업데이트
             self.status_bar.update_todo_count(total_todos, completed_todos)
+            self.status_bar.update_due_date_info(due_today_count, overdue_count)
             
             # 전체 진행률 바 업데이트
             self.overall_progress_bar.set_progress(overall_progress)
             
-            # 상태 메시지 업데이트
+            # 상태 메시지 업데이트 (목표 날짜 정보 포함)
             if total_todos == 0:
                 status_msg = "할일이 없습니다"
             elif completed_todos == total_todos:
                 status_msg = "모든 할일이 완료되었습니다! 🎉"
             else:
                 remaining = total_todos - completed_todos
-                status_msg = f"{remaining}개의 할일이 남아있습니다"
+                status_parts = [f"{remaining}개의 할일이 남아있습니다"]
+                
+                # 긴급한 정보가 있으면 상태 메시지에 추가
+                if overdue_count > 0:
+                    status_parts.append(f"⚠️ {overdue_count}개 지연")
+                elif due_today_count > 0:
+                    status_parts.append(f"📅 {due_today_count}개 오늘 마감")
+                
+                status_msg = " | ".join(status_parts)
             
             self.status_bar.update_status(status_msg)
             
         except Exception as e:
             self.status_bar.update_status(f"상태 업데이트 오류: {str(e)}")
+    
+    def start_status_bar_updates(self):
+        """실시간 상태바 업데이트 시작
+        
+        Requirements: 실시간 정보 업데이트 구현
+        """
+        self._update_status_bar_periodically()
+    
+    def _update_status_bar_periodically(self):
+        """주기적으로 상태바 업데이트 (1분마다)"""
+        try:
+            # 목표 날짜 관련 정보만 업데이트 (성능 최적화)
+            status_summary = self.notification_service.get_status_bar_summary()
+            due_today_count = status_summary['due_today']
+            overdue_count = status_summary['overdue']
+            
+            # 상태바의 목표 날짜 정보 업데이트
+            self.status_bar.update_due_date_info(due_today_count, overdue_count)
+            
+            # 상태 메시지도 업데이트 (변경사항이 있는 경우만)
+            current_info = self.status_bar.get_due_date_info()
+            if (current_info['due_today'] != due_today_count or 
+                current_info['overdue'] != overdue_count):
+                
+                # 전체 상태바 업데이트
+                self.update_status_bar()
+            
+        except Exception as e:
+            print(f"주기적 상태바 업데이트 오류: {e}")
+        
+        # 1분 후 다시 실행 (60000ms)
+        self.root.after(60000, self._update_status_bar_periodically)
     
     def load_window_settings(self):
         """윈도우 크기/위치 설정 로드 - 사용자 설정 확장"""
@@ -426,6 +489,13 @@ class MainWindow:
                     self.filter_panel.sort_by_var.set(filter_opts['sort_by'])
                 if 'sort_order' in filter_opts:
                     self.filter_panel.sort_order_var.set(filter_opts['sort_order'])
+                if 'due_date_filter' in filter_opts:
+                    self.filter_panel.due_date_filter_var.set(filter_opts['due_date_filter'])
+            
+            # 시작 알림 설정 복원
+            if 'show_startup_notifications' in settings:
+                # 설정이 저장되어 있으면 그 값을 사용, 없으면 기본값 True
+                pass  # 이미 saved_settings에 저장되어 있음
             
             # 검색어 복원 (선택사항 - 보통은 빈 상태로 시작)
             # if 'last_search' in settings and hasattr(self, 'search_box'):
@@ -476,6 +546,10 @@ class MainWindow:
                     if self.todo_tree.item(node_id, 'open'):
                         expanded_todos.append(todo_id)
                 settings['expanded_todos'] = expanded_todos
+            
+            # 시작 알림 설정 저장
+            if hasattr(self, 'saved_settings') and 'show_startup_notifications' in self.saved_settings:
+                settings['show_startup_notifications'] = self.saved_settings['show_startup_notifications']
             
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=2)
@@ -570,13 +644,158 @@ class MainWindow:
         if hasattr(self, 'todo_tree'):
             self.todo_tree.focus_set()
     
+    def _quick_set_due_date_today(self):
+        """빠른 목표 날짜 설정 - 오늘 (Ctrl+D)
+        
+        Requirements: 키보드 단축키 추가 (빠른 목표 날짜 설정)
+        """
+        try:
+            todo_id = self.todo_tree.get_selected_todo_id()
+            if not todo_id:
+                self.status_bar.update_status("할일을 선택한 후 단축키를 사용하세요.")
+                return
+            
+            from datetime import datetime
+            today_due = datetime.now().replace(hour=18, minute=0, second=0, microsecond=0)
+            
+            success = self.todo_service.set_todo_due_date(todo_id, today_due)
+            if success:
+                self.on_refresh()
+                self.update_status_bar()
+                self.status_bar.update_status("목표 날짜가 오늘 18:00으로 설정되었습니다.")
+            else:
+                show_error_dialog(self.root, "목표 날짜 설정에 실패했습니다.")
+        except Exception as e:
+            show_error_dialog(self.root, f"목표 날짜 설정 중 오류가 발생했습니다: {str(e)}")
+    
+    def _quick_set_due_date_tomorrow(self):
+        """빠른 목표 날짜 설정 - 내일 (Ctrl+Shift+D)
+        
+        Requirements: 키보드 단축키 추가 (빠른 목표 날짜 설정)
+        """
+        try:
+            todo_id = self.todo_tree.get_selected_todo_id()
+            if not todo_id:
+                self.status_bar.update_status("할일을 선택한 후 단축키를 사용하세요.")
+                return
+            
+            from datetime import datetime, timedelta
+            tomorrow_due = (datetime.now() + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
+            
+            success = self.todo_service.set_todo_due_date(todo_id, tomorrow_due)
+            if success:
+                self.on_refresh()
+                self.update_status_bar()
+                self.status_bar.update_status("목표 날짜가 내일 18:00으로 설정되었습니다.")
+            else:
+                show_error_dialog(self.root, "목표 날짜 설정에 실패했습니다.")
+        except Exception as e:
+            show_error_dialog(self.root, f"목표 날짜 설정 중 오류가 발생했습니다: {str(e)}")
+    
+    def _quick_set_due_date_this_weekend(self):
+        """빠른 목표 날짜 설정 - 이번 주말 (Ctrl+Alt+D)
+        
+        Requirements: 키보드 단축키 추가 (빠른 목표 날짜 설정)
+        """
+        try:
+            todo_id = self.todo_tree.get_selected_todo_id()
+            if not todo_id:
+                self.status_bar.update_status("할일을 선택한 후 단축키를 사용하세요.")
+                return
+            
+            from services.date_service import DateService
+            quick_options = DateService.get_quick_date_options()
+            weekend_due = quick_options.get("이번 주말")
+            
+            if weekend_due:
+                success = self.todo_service.set_todo_due_date(todo_id, weekend_due)
+                if success:
+                    self.on_refresh()
+                    self.update_status_bar()
+                    self.status_bar.update_status("목표 날짜가 이번 주말로 설정되었습니다.")
+                else:
+                    show_error_dialog(self.root, "목표 날짜 설정에 실패했습니다.")
+            else:
+                show_error_dialog(self.root, "이번 주말 날짜를 계산할 수 없습니다.")
+        except Exception as e:
+            show_error_dialog(self.root, f"목표 날짜 설정 중 오류가 발생했습니다: {str(e)}")
+    
+    def _quick_remove_due_date(self):
+        """빠른 목표 날짜 제거 (Ctrl+R)
+        
+        Requirements: 키보드 단축키 추가 (빠른 목표 날짜 설정)
+        """
+        try:
+            todo_id = self.todo_tree.get_selected_todo_id()
+            if not todo_id:
+                self.status_bar.update_status("할일을 선택한 후 단축키를 사용하세요.")
+                return
+            
+            success = self.todo_service.set_todo_due_date(todo_id, None)
+            if success:
+                self.on_refresh()
+                self.update_status_bar()
+                self.status_bar.update_status("목표 날짜가 제거되었습니다.")
+            else:
+                show_error_dialog(self.root, "목표 날짜 제거에 실패했습니다.")
+        except Exception as e:
+            show_error_dialog(self.root, f"목표 날짜 제거 중 오류가 발생했습니다: {str(e)}")
+    
+    def _show_accessibility_help(self):
+        """접근성 도움말 표시 (Alt+F1)
+        
+        Requirements: 툴팁 및 도움말 메시지 추가
+        """
+        help_text = """
+접근성 기능 및 키보드 단축키
+
+=== 빠른 목표 날짜 설정 ===
+• Ctrl+D: 선택된 할일의 목표 날짜를 오늘 18:00으로 설정
+• Ctrl+Shift+D: 선택된 할일의 목표 날짜를 내일 18:00으로 설정
+• Ctrl+Alt+D: 선택된 할일의 목표 날짜를 이번 주말로 설정
+• Ctrl+R: 선택된 할일의 목표 날짜 제거
+
+=== 일반 단축키 ===
+• Ctrl+N: 새 할일 추가
+• F2: 선택된 할일/하위작업 수정
+• Del: 선택된 할일/하위작업 삭제
+• Ctrl+Shift+N: 하위작업 추가
+• F5: 새로고침
+• Ctrl+F: 검색 박스로 포커스 이동
+• Esc: 검색 클리어 후 트리로 포커스 이동
+
+=== 접근성 기능 ===
+• 색상과 함께 패턴/아이콘으로 긴급도 표시
+• 키보드만으로 모든 기능 접근 가능
+• Tab 키로 UI 요소 간 이동
+• 스크린 리더 지원을 위한 접근성 레이블
+
+=== 긴급도 표시 ===
+• 🔴 !!! : 지연됨 (빨간색)
+• 🟠 !! : 24시간 이내 마감 (주황색)
+• 🟡 ! : 3일 이내 마감 (노란색)
+• ⚪ : 일반 우선순위 (검은색)
+• ✅ ✓ : 완료됨 (회색)
+
+도움말: F1 또는 Ctrl+H
+접근성 도움말: Alt+F1
+        """
+        
+        show_info_dialog(self.root, help_text, "접근성 도움말")
+    
     # 이벤트 핸들러들
     def on_add_todo(self):
         """할일 추가 이벤트 핸들러"""
         try:
-            title = show_add_todo_dialog(self.root)
-            if title:
+            result = show_add_todo_dialog_with_due_date(self.root)
+            if result:
+                title = result['title']
+                due_date = result.get('due_date')
+                
                 todo = self.todo_service.add_todo(title)
+                if todo and due_date:
+                    self.todo_service.set_todo_due_date(todo.id, due_date)
+                
                 self.on_refresh()  # 필터 적용하여 새로고침
                 self.update_status_bar()  # 전체 진행률 즉시 업데이트
                 self.status_bar.update_status(f"할일 '{title}'이(가) 추가되었습니다.")
@@ -604,13 +823,29 @@ class MainWindow:
                 show_error_dialog(self.root, "선택된 할일을 찾을 수 없습니다.")
                 return
             
-            new_title = show_edit_todo_dialog(self.root, todo.title)
-            if new_title:
-                success = self.todo_service.update_todo(todo_id, new_title)
+            result = show_edit_todo_dialog_with_due_date(self.root, todo.title, todo.due_date)
+            if result:
+                title_changed = result.get('title') is not None
+                due_date_changed = result.get('due_date_changed', False)
+                
+                success = True
+                if title_changed:
+                    success = self.todo_service.update_todo(todo_id, result['title'])
+                
+                if success and due_date_changed:
+                    success = self.todo_service.set_todo_due_date(todo_id, result['due_date'])
+                
                 if success:
                     self.on_refresh()  # 필터 적용하여 새로고침
                     self.update_status_bar()  # 전체 진행률 즉시 업데이트
-                    self.status_bar.update_status(f"할일이 '{new_title}'(으)로 수정되었습니다.")
+                    
+                    if title_changed and due_date_changed:
+                        self.status_bar.update_status("할일 제목과 목표 날짜가 수정되었습니다.")
+                    elif title_changed:
+                        self.status_bar.update_status(f"할일이 '{result['title']}'(으)로 수정되었습니다.")
+                    elif due_date_changed:
+                        self.status_bar.update_status("할일의 목표 날짜가 수정되었습니다.")
+                    
                     self.status_bar.update_last_saved("저장됨")
                 else:
                     show_error_dialog(self.root, "할일 수정에 실패했습니다.")
@@ -661,9 +896,15 @@ class MainWindow:
                 show_error_dialog(self.root, "선택된 할일을 찾을 수 없습니다.")
                 return
             
-            subtask_title = show_add_subtask_dialog(self.root, todo.title)
-            if subtask_title:
+            result = show_add_subtask_dialog_with_due_date(self.root, todo.title, todo.due_date)
+            if result:
+                subtask_title = result['title']
+                due_date = result.get('due_date')
+                
                 subtask = self.todo_service.add_subtask(todo_id, subtask_title)
+                if subtask and due_date:
+                    self.todo_service.set_subtask_due_date(todo_id, subtask.id, due_date)
+                
                 if subtask:
                     self.on_refresh()  # 필터 적용하여 새로고침
                     self.update_status_bar()  # 전체 진행률 즉시 업데이트
@@ -867,36 +1108,53 @@ class MainWindow:
             # 현재 검색어 가져오기
             search_term = self.search_box.get_search_term()
             
-            # 검색어와 필터 옵션을 적용하여 할일 목록 필터링
-            filtered_todos = self.todo_service.filter_todos(
-                show_completed=filter_options['show_completed'],
-                search_term=search_term
+            # 목표 날짜 필터와 정렬을 통합하여 처리
+            due_date_filter = filter_options.get('due_date_filter', 'all')
+            sort_by = filter_options['sort_by']
+            show_completed = filter_options['show_completed']
+            
+            # 통합 필터링 및 정렬 사용
+            filtered_todos = self.todo_service.get_filtered_and_sorted_todos(
+                filter_type=due_date_filter,
+                sort_by=sort_by,
+                show_completed=show_completed
             )
             
-            # 정렬 적용
-            sorted_todos = self.todo_service.sort_todos(
-                filtered_todos, 
-                sort_by=filter_options['sort_by']
-            )
+            # 검색어 필터링 (추가)
+            if search_term:
+                search_term_lower = search_term.lower()
+                filtered_todos = [
+                    todo for todo in filtered_todos
+                    if (search_term_lower in todo.title.lower() or
+                        any(search_term_lower in subtask.title.lower() 
+                            for subtask in todo.subtasks))
+                ]
             
             # 정렬 순서 적용 (desc인 경우 역순)
             if filter_options['sort_order'] == 'desc':
-                sorted_todos.reverse()
+                filtered_todos.reverse()
             
             # 트리 뷰 업데이트
-            self.todo_tree.populate_tree(sorted_todos)
+            self.todo_tree.populate_tree(filtered_todos)
             
             # 상태바 업데이트
             filter_msg = []
-            if not filter_options['show_completed']:
+            if not show_completed:
                 filter_msg.append("완료된 할일 숨김")
+            if due_date_filter != 'all':
+                filter_names = {
+                    'due_today': '오늘 마감',
+                    'overdue': '지연된 할일',
+                    'this_week': '이번 주'
+                }
+                filter_msg.append(filter_names.get(due_date_filter, due_date_filter))
             if search_term:
                 filter_msg.append(f"검색: '{search_term}'")
             
             if filter_msg:
-                status_text = f"필터 적용 ({', '.join(filter_msg)}): {len(sorted_todos)}개 항목"
+                status_text = f"필터 적용 ({', '.join(filter_msg)}): {len(filtered_todos)}개 항목"
             else:
-                status_text = f"전체 {len(sorted_todos)}개 항목"
+                status_text = f"전체 {len(filtered_todos)}개 항목"
             
             self.status_bar.update_status(status_text)
             
@@ -956,6 +1214,7 @@ class MainWindow:
 📋 주요 기능:
 • 할일 추가/수정/삭제
 • 하위작업 관리 (체크박스)
+• 목표 날짜 설정 및 긴급도 표시
 • 실시간 진행률 표시
 • 검색 및 필터링
 • 폴더 관리 및 파일 연동
@@ -969,10 +1228,17 @@ class MainWindow:
 • F5: 새로고침
 • Ctrl+F: 검색 박스로 이동
 • Ctrl+H 또는 F1: 도움말
+• Alt+F1: 접근성 도움말
 • Escape: 검색 지우고 트리로 이동
 • Space: 하위작업 완료 토글
 • Tab/Shift+Tab: 위젯 간 이동
 • Ctrl+Q: 프로그램 종료
+
+⚡ 빠른 목표 날짜 설정:
+• Ctrl+D: 오늘 18:00으로 설정
+• Ctrl+Shift+D: 내일 18:00으로 설정
+• Ctrl+Alt+D: 이번 주말로 설정
+• Ctrl+R: 목표 날짜 제거
 
 🖱️ 마우스 조작:
 • 단일 클릭: 항목 선택
@@ -984,8 +1250,20 @@ class MainWindow:
 🔍 검색 및 필터:
 • 실시간 검색 지원
 • 완료된 할일 숨기기/보이기
-• 생성일/제목/진행률 순 정렬
+• 목표 날짜별 필터링: 전체, 오늘 마감, 지연된 할일, 이번 주
+• 생성일/제목/진행률/목표 날짜 순 정렬
 • 오름차순/내림차순 정렬
+
+📅 목표 날짜 기능:
+• 할일 및 하위작업에 목표 날짜 설정
+• 긴급도에 따른 색상 및 아이콘 표시:
+  🔴 !!! 빨간색: 지연된 할일
+  🟠 !! 주황색: 24시간 이내 마감
+  🟡 ! 노란색: 3일 이내 마감
+  ⚪ 검은색: 일반 우선순위
+  ✅ ✓ 회색: 완료된 할일
+• 상대적 시간 표시 (D-3, 2일 후, 3시간 지남 등)
+• 상태바에 오늘 마감/지연된 할일 개수 표시
 
 💾 데이터 관리:
 • 자동 저장 (변경 시 즉시)
@@ -998,11 +1276,20 @@ class MainWindow:
 • 폴더 열기로 관련 파일 관리
 • 할일 삭제 시 폴더 삭제 선택 가능
 
-💡 팁:
+♿ 접근성 기능:
+• 색상과 함께 아이콘/패턴으로 정보 표시
+• 키보드만으로 모든 기능 접근 가능
+• 스크린 리더 지원을 위한 접근성 레이블
+• 고대비 색상 및 명확한 시각적 구분
+• 툴팁으로 상세한 도움말 제공
+
+💡 사용 팁:
 • 할일에 하위작업을 추가하여 세부 계획 관리
 • 진행률 바로 전체 진행 상황 파악
 • 검색으로 많은 할일 중 원하는 항목 빠르게 찾기
-• 컨텍스트 메뉴로 다양한 기능 빠르게 접근"""
+• 컨텍스트 메뉴로 다양한 기능 빠르게 접근
+• 목표 날짜를 설정하여 시간 기반 할일 관리
+• 긴급도 색상을 참고하여 우선순위 결정"""
         
         # 도움말 창을 별도 윈도우로 표시
         self._show_help_window(help_text)
@@ -1078,9 +1365,90 @@ Python tkinter 기반 할일 관리 프로그램
             messagebox.showerror("오류", f"종료 중 오류가 발생했습니다: {str(e)}")
             self.root.destroy()
     
+    def check_and_show_startup_notification(self):
+        """
+        시작 시 알림 표시 조건 확인 및 다이얼로그 표시 로직 구현
+        
+        Requirements 8.4: 목표 날짜가 임박한 할일이 있으면 시작 시 알림 표시
+        """
+        try:
+            # "다시 보지 않기" 설정 확인
+            if not self.get_startup_notification_setting():
+                return
+            
+            # 알림 표시 조건 확인
+            if not self.notification_service.should_show_startup_notification():
+                return
+            
+            # 알림 정보 가져오기
+            status_summary = self.notification_service.get_status_bar_summary()
+            overdue_count = status_summary['overdue']
+            due_today_count = status_summary['due_today']
+            
+            # 시작 알림 다이얼로그 표시
+            self.root.after(500, lambda: self._show_startup_notification_dialog(overdue_count, due_today_count))
+            
+        except Exception as e:
+            # 알림 표시 실패는 치명적이지 않으므로 로그만 남기고 계속 진행
+            print(f"시작 알림 확인 중 오류: {e}")
+    
+    def _show_startup_notification_dialog(self, overdue_count: int, due_today_count: int):
+        """
+        시작 알림 다이얼로그 표시
+        
+        Args:
+            overdue_count: 지연된 할일 개수
+            due_today_count: 오늘 마감인 할일 개수
+        """
+        try:
+            result = show_startup_notification_dialog(self.root, overdue_count, due_today_count)
+            
+            # "다시 보지 않기" 옵션 처리
+            if result.get('dont_show_again', False):
+                self.set_startup_notification_setting(False)
+                if hasattr(self, 'status_bar'):
+                    self.status_bar.update_status("시작 알림이 비활성화되었습니다.")
+            
+        except Exception as e:
+            print(f"시작 알림 다이얼로그 표시 중 오류: {e}")
+    
+    def get_startup_notification_setting(self) -> bool:
+        """
+        시작 알림 설정 가져오기
+        
+        Returns:
+            bool: 시작 알림을 표시할지 여부 (기본값: True)
+        """
+        try:
+            if hasattr(self, 'saved_settings') and self.saved_settings:
+                return self.saved_settings.get('show_startup_notifications', True)
+            return True
+        except Exception:
+            return True
+    
+    def set_startup_notification_setting(self, enabled: bool):
+        """
+        시작 알림 설정 저장
+        
+        Args:
+            enabled: 시작 알림 활성화 여부
+        """
+        try:
+            if not hasattr(self, 'saved_settings'):
+                self.saved_settings = {}
+            
+            self.saved_settings['show_startup_notifications'] = enabled
+            self.save_window_settings()
+            
+        except Exception as e:
+            print(f"시작 알림 설정 저장 중 오류: {e}")
+    
     def run(self):
         """GUI 애플리케이션 실행"""
         try:
+            # 시작 시 알림 체크 (UI가 완전히 로드된 후)
+            self.root.after(100, self.check_and_show_startup_notification)
+            
             self.root.mainloop()
         except Exception as e:
             messagebox.showerror("치명적 오류", f"프로그램 실행 중 오류가 발생했습니다: {str(e)}")

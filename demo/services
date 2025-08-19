@@ -1,0 +1,285 @@
+"""
+NotificationService 데모
+
+NotificationService의 기능들을 시연합니다.
+"""
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from datetime import datetime, timedelta
+from services.notification_service import NotificationService
+from services.todo_service import TodoService
+from services.storage_service import StorageService
+from services.file_service import FileService
+from models.todo import Todo
+from models.subtask import SubTask
+
+
+def create_demo_data():
+    """데모용 할일 데이터 생성"""
+    now = datetime.now()
+    todos = []
+    
+    # 1. 지연된 할일
+    overdue_todo = Todo(
+        id=1,
+        title="지연된 프로젝트 문서 작성",
+        created_at=now - timedelta(days=5),
+        folder_path="todo_folders/todo_1_지연된_프로젝트",
+        due_date=now - timedelta(days=2)
+    )
+    # 지연된 하위 작업 추가
+    overdue_subtask = SubTask(
+        id=1,
+        todo_id=1,
+        title="요구사항 분석",
+        is_completed=False,
+        created_at=now - timedelta(days=4),
+        due_date=now - timedelta(days=3)
+    )
+    overdue_todo.add_subtask(overdue_subtask)
+    todos.append(overdue_todo)
+    
+    # 2. 오늘 마감 할일
+    due_today_todo = Todo(
+        id=2,
+        title="회의 자료 준비",
+        created_at=now - timedelta(days=1),
+        folder_path="todo_folders/todo_2_회의_자료",
+        due_date=now.replace(hour=18, minute=0, second=0, microsecond=0)
+    )
+    # 일부 완료된 하위 작업들
+    subtask1 = SubTask(
+        id=2,
+        todo_id=2,
+        title="발표 슬라이드 작성",
+        is_completed=True,
+        created_at=now - timedelta(hours=20),
+        completed_at=now - timedelta(hours=2)
+    )
+    subtask2 = SubTask(
+        id=3,
+        todo_id=2,
+        title="데모 준비",
+        is_completed=False,
+        created_at=now - timedelta(hours=18),
+        due_date=now.replace(hour=17, minute=0, second=0, microsecond=0)
+    )
+    due_today_todo.add_subtask(subtask1)
+    due_today_todo.add_subtask(subtask2)
+    todos.append(due_today_todo)
+    
+    # 3. 긴급한 할일 (내일 마감)
+    urgent_todo = Todo(
+        id=3,
+        title="코드 리뷰 완료",
+        created_at=now - timedelta(hours=6),
+        folder_path="todo_folders/todo_3_코드_리뷰",
+        due_date=now + timedelta(hours=18)
+    )
+    todos.append(urgent_todo)
+    
+    # 4. 완료된 할일
+    completed_todo = Todo(
+        id=4,
+        title="테스트 케이스 작성",
+        created_at=now - timedelta(days=3),
+        folder_path="todo_folders/todo_4_테스트_케이스",
+        due_date=now - timedelta(days=1),
+        completed_at=now - timedelta(hours=4)
+    )
+    completed_subtask = SubTask(
+        id=4,
+        todo_id=4,
+        title="단위 테스트 작성",
+        is_completed=True,
+        created_at=now - timedelta(days=2),
+        completed_at=now - timedelta(hours=4)
+    )
+    completed_todo.add_subtask(completed_subtask)
+    todos.append(completed_todo)
+    
+    # 5. 일반 할일 (목표 날짜 없음)
+    normal_todo = Todo(
+        id=5,
+        title="문서 정리",
+        created_at=now,
+        folder_path="todo_folders/todo_5_문서_정리"
+    )
+    todos.append(normal_todo)
+    
+    return todos
+
+
+def demo_notification_service():
+    """NotificationService 데모 실행"""
+    print("=" * 60)
+    print("NotificationService 데모")
+    print("=" * 60)
+    
+    # Mock TodoService 생성 (실제 데이터 사용)
+    class MockTodoService:
+        def __init__(self, todos):
+            self.todos = todos
+        
+        def get_all_todos(self):
+            return self.todos
+        
+        def get_overdue_todos(self):
+            now = datetime.now()
+            return [todo for todo in self.todos 
+                   if todo.due_date and todo.due_date < now and not todo.is_completed()]
+        
+        def get_due_today_todos(self):
+            now = datetime.now()
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            return [todo for todo in self.todos 
+                   if todo.due_date and today_start <= todo.due_date <= today_end and not todo.is_completed()]
+        
+        def get_urgent_todos(self, hours=24):
+            now = datetime.now()
+            urgent_threshold = now + timedelta(hours=hours)
+            return [todo for todo in self.todos 
+                   if todo.due_date and now <= todo.due_date <= urgent_threshold and not todo.is_completed()]
+        
+        def get_todos_with_overdue_subtasks(self):
+            return [todo for todo in self.todos if todo.has_overdue_subtasks()]
+        
+        def get_todos_by_due_date(self, start_date, end_date):
+            return [todo for todo in self.todos 
+                   if todo.due_date and start_date <= todo.due_date <= end_date]
+    
+    # 데모 데이터 생성
+    demo_todos = create_demo_data()
+    mock_todo_service = MockTodoService(demo_todos)
+    
+    # NotificationService 생성
+    notification_service = NotificationService(mock_todo_service)
+    
+    print("\n1. 전체 할일 목록:")
+    print("-" * 40)
+    for todo in demo_todos:
+        status = "완료" if todo.is_completed() else "진행중"
+        due_text = todo.get_time_remaining_text() if todo.due_date else "목표 날짜 없음"
+        print(f"  • {todo.title} [{status}] - {due_text}")
+        for subtask in todo.subtasks:
+            sub_status = "완료" if subtask.is_completed else "진행중"
+            sub_due_text = subtask.get_time_remaining_text() if subtask.due_date else "목표 날짜 없음"
+            print(f"    - {subtask.title} [{sub_status}] - {sub_due_text}")
+    
+    print("\n2. 지연된 할일:")
+    print("-" * 40)
+    overdue_todos = notification_service.get_overdue_todos()
+    if overdue_todos:
+        for todo in overdue_todos:
+            print(f"  • {todo.title} - {todo.get_time_remaining_text()}")
+    else:
+        print("  지연된 할일이 없습니다.")
+    
+    print("\n3. 오늘 마감 할일:")
+    print("-" * 40)
+    due_today_todos = notification_service.get_due_today_todos()
+    if due_today_todos:
+        for todo in due_today_todos:
+            print(f"  • {todo.title} - {todo.get_time_remaining_text()}")
+    else:
+        print("  오늘 마감인 할일이 없습니다.")
+    
+    print("\n4. 긴급한 할일 (24시간 이내):")
+    print("-" * 40)
+    urgent_todos = notification_service.get_urgent_todos()
+    if urgent_todos:
+        for todo in urgent_todos:
+            print(f"  • {todo.title} - {todo.get_time_remaining_text()}")
+    else:
+        print("  긴급한 할일이 없습니다.")
+    
+    print("\n5. 시작 시 알림 표시 여부:")
+    print("-" * 40)
+    should_show = notification_service.should_show_startup_notification()
+    print(f"  알림 표시: {'예' if should_show else '아니오'}")
+    
+    if should_show:
+        print("\n6. 시작 시 알림 메시지:")
+        print("-" * 40)
+        message = notification_service.get_startup_notification_message()
+        print(f"  {message}")
+    
+    print("\n7. 상태바 요약 정보:")
+    print("-" * 40)
+    summary = notification_service.get_status_bar_summary()
+    for key, value in summary.items():
+        key_names = {
+            'overdue': '지연된 할일',
+            'due_today': '오늘 마감',
+            'urgent': '긴급한 할일',
+            'total': '전체 할일',
+            'completed': '완료된 할일'
+        }
+        print(f"  {key_names.get(key, key)}: {value}개")
+    
+    print("\n8. 상태바 텍스트:")
+    print("-" * 40)
+    status_text = notification_service.format_status_bar_text()
+    print(f"  {status_text}")
+    
+    print("\n9. 알림 우선순위:")
+    print("-" * 40)
+    priority = notification_service.get_notification_priority()
+    priority_names = {
+        'high': '높음 (지연된 할일 있음)',
+        'medium': '보통 (오늘 마감 할일 있음)',
+        'low': '낮음 (긴급한 할일 있음)',
+        'none': '없음 (긴급한 할일 없음)'
+    }
+    print(f"  우선순위: {priority_names.get(priority, priority)}")
+    
+    print("\n10. 상세 알림 정보:")
+    print("-" * 40)
+    detailed_info = notification_service.get_detailed_notification_info()
+    for category, todo_titles in detailed_info.items():
+        category_names = {
+            'overdue': '지연된 할일',
+            'due_today': '오늘 마감',
+            'urgent': '긴급한 할일'
+        }
+        print(f"  {category_names.get(category, category)}:")
+        if todo_titles:
+            for title in todo_titles:
+                print(f"    - {title}")
+        else:
+            print("    (없음)")
+    
+    print("\n11. 지연된 하위 작업이 있는 할일:")
+    print("-" * 40)
+    todos_with_overdue_subtasks = notification_service.get_todos_with_overdue_subtasks()
+    if todos_with_overdue_subtasks:
+        for todo in todos_with_overdue_subtasks:
+            print(f"  • {todo.title}")
+            # 지연된 하위 작업들 표시
+            now = datetime.now()
+            for subtask in todo.subtasks:
+                if (not subtask.is_completed and 
+                    subtask.due_date and 
+                    subtask.due_date < now):
+                    print(f"    - {subtask.title} ({subtask.get_time_remaining_text()})")
+    else:
+        print("  지연된 하위 작업이 있는 할일이 없습니다.")
+    
+    print("\n12. 7일간 할일 분포:")
+    print("-" * 40)
+    period_summary = notification_service.get_notification_summary_for_period(days=7)
+    for date_key, count in period_summary.items():
+        if count > 0:
+            print(f"  {date_key}: {count}개")
+    
+    print("\n" + "=" * 60)
+    print("NotificationService 데모 완료")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    demo_notification_service()

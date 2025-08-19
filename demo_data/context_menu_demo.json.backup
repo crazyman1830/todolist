@@ -1,0 +1,26 @@
+{
+  "todos": [
+    {
+      "id": 5,
+      "title": "New Todo 16:33:08",
+      "created_at": "2025-08-18T16:33:08.300216",
+      "folder_path": "todo_folders\\todo_5_New_Todo_16_33_08",
+      "subtasks": [
+        {
+          "id": 9,
+          "todo_id": 5,
+          "title": "Sample subtask",
+          "is_completed": false,
+          "created_at": "2025-08-18T16:33:08.304319",
+          "due_date": null,
+          "completed_at": null
+        }
+      ],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    }
+  ],
+  "next_id": 6,
+  "next_subtask_id": 10
+}

@@ -4,13 +4,14 @@
 할일 추가, 조회, 수정, 삭제 등의 핵심 비즈니스 로직을 처리합니다.
 """
 
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import List, Optional, Dict, Any, Tuple
+from datetime import datetime, timedelta
 from models.todo import Todo
 from models.subtask import SubTask
 from services.storage_service import StorageService
 from services.file_service import FileService
 from utils.validators import TodoValidator
+from utils.performance_utils import get_performance_optimizer, batch_update
 
 
 class TodoService:
@@ -27,6 +28,10 @@ class TodoService:
         self.storage_service = storage_service
         self.file_service = file_service
         self._todos_cache: Optional[List[Todo]] = None
+        self.performance_optimizer = get_performance_optimizer()
+        
+        # 배치 업데이트 콜백 등록
+        self._register_batch_callbacks()
     
     def add_todo(self, title: str) -> Todo:
         """
@@ -675,12 +680,493 @@ class TodoService:
             self.clear_cache()
         return success
     
+    # 목표 날짜 관련 비즈니스 로직 메서드들
+    
+    def set_todo_due_date(self, todo_id: int, due_date: Optional[datetime]) -> bool:
+        """
+        할일의 목표 날짜 설정
+        
+        Requirements 4.1: 목표 날짜 기준 할일 관리
+        
+        Args:
+            todo_id: 목표 날짜를 설정할 할일의 ID
+            due_date: 설정할 목표 날짜 (None이면 목표 날짜 제거)
+            
+        Returns:
+            bool: 설정 성공 여부
+            
+        Raises:
+            ValueError: 할일을 찾을 수 없거나 날짜가 유효하지 않은 경우
+        """
+        # 할일 목록 로드
+        todos = self.get_all_todos()
+        
+        # 해당 할일 찾기
+        target_todo = None
+        for todo in todos:
+            if todo.id == todo_id:
+                target_todo = todo
+                break
+        
+        if target_todo is None:
+            raise ValueError("해당 할일을 찾을 수 없습니다.")
+        
+        # 목표 날짜 유효성 검사 (설정하는 경우에만)
+        if due_date is not None:
+            from services.date_service import DateService
+            is_valid, error_msg = DateService.validate_due_date(due_date)
+            if not is_valid:
+                raise ValueError(error_msg)
+        
+        # 목표 날짜 설정
+        old_due_date = target_todo.due_date
+        target_todo.set_due_date(due_date)
+        
+        # 저장 (자동 저장 기능 사용)
+        if not self.storage_service.save_todos_with_auto_save(todos):
+            # 저장 실패 시 원래 날짜로 복원
+            target_todo.set_due_date(old_due_date)
+            return False
+        
+        # 캐시 무효화
+        self._todos_cache = None
+        
+        return True
+    
+    def set_subtask_due_date(self, todo_id: int, subtask_id: int, 
+                            due_date: Optional[datetime]) -> bool:
+        """
+        하위 작업의 목표 날짜 설정
+        
+        Requirements 7.1, 7.2: 하위 작업 목표 날짜 설정 및 유효성 검사
+        
+        Args:
+            todo_id: 할일 ID
+            subtask_id: 하위 작업 ID
+            due_date: 설정할 목표 날짜 (None이면 목표 날짜 제거)
+            
+        Returns:
+            bool: 설정 성공 여부
+            
+        Raises:
+            ValueError: 할일이나 하위작업을 찾을 수 없거나 날짜가 유효하지 않은 경우
+        """
+        # 할일 목록 로드
+        todos = self.get_all_todos()
+        
+        # 해당 할일 찾기
+        target_todo = None
+        for todo in todos:
+            if todo.id == todo_id:
+                target_todo = todo
+                break
+        
+        if target_todo is None:
+            raise ValueError("해당 할일을 찾을 수 없습니다.")
+        
+        # 해당 하위 작업 찾기
+        target_subtask = None
+        for subtask in target_todo.subtasks:
+            if subtask.id == subtask_id:
+                target_subtask = subtask
+                break
+        
+        if target_subtask is None:
+            raise ValueError("해당 하위 작업을 찾을 수 없습니다.")
+        
+        # 목표 날짜 유효성 검사 (설정하는 경우에만)
+        if due_date is not None:
+            is_valid, error_msg = self.validate_subtask_due_date(todo_id, due_date)
+            if not is_valid:
+                raise ValueError(error_msg)
+        
+        # 목표 날짜 설정
+        old_due_date = target_subtask.due_date
+        target_subtask.set_due_date(due_date)
+        
+        # 저장 (자동 저장 기능 사용)
+        if not self.storage_service.save_todos_with_auto_save(todos):
+            # 저장 실패 시 원래 날짜로 복원
+            target_subtask.set_due_date(old_due_date)
+            return False
+        
+        # 캐시 무효화
+        self._todos_cache = None
+        
+        return True
+    
+    def get_todos_by_due_date(self, start_date: Optional[datetime] = None,
+                             end_date: Optional[datetime] = None) -> List[Todo]:
+        """
+        목표 날짜 범위로 할일 필터링
+        
+        Requirements 4.2, 4.3, 4.4: 목표 날짜 기준 필터링
+        
+        Args:
+            start_date: 시작 날짜 (None이면 제한 없음)
+            end_date: 종료 날짜 (None이면 제한 없음)
+            
+        Returns:
+            List[Todo]: 필터링된 할일 목록
+        """
+        todos = self.get_all_todos()
+        filtered_todos = []
+        
+        for todo in todos:
+            # 목표 날짜가 없는 할일은 제외
+            if todo.due_date is None:
+                continue
+            
+            # 시작 날짜 체크
+            if start_date is not None and todo.due_date < start_date:
+                continue
+            
+            # 종료 날짜 체크
+            if end_date is not None and todo.due_date > end_date:
+                continue
+            
+            filtered_todos.append(todo)
+        
+        return filtered_todos
+    
+    def get_overdue_todos(self) -> List[Todo]:
+        """
+        지연된 할일들 반환
+        
+        Requirements 4.3: 지연된 할일 조회
+        
+        Returns:
+            List[Todo]: 목표 날짜가 지난 미완료 할일 목록
+        """
+        todos = self.get_all_todos()
+        overdue_todos = []
+        
+        now = datetime.now()
+        
+        for todo in todos:
+            # 목표 날짜가 있고, 지났으며, 완료되지 않은 할일
+            if (todo.due_date is not None and 
+                todo.due_date < now and 
+                not todo.is_completed()):
+                overdue_todos.append(todo)
+        
+        return overdue_todos
+    
+    def get_urgent_todos(self, hours: int = 24) -> List[Todo]:
+        """
+        긴급한 할일들 반환
+        
+        Requirements 4.3: 긴급한 할일 조회
+        
+        Args:
+            hours: 긴급 기준 시간 (기본 24시간)
+            
+        Returns:
+            List[Todo]: 지정된 시간 내에 마감인 미완료 할일 목록
+        """
+        todos = self.get_all_todos()
+        urgent_todos = []
+        
+        now = datetime.now()
+        urgent_threshold = now + timedelta(hours=hours)
+        
+        for todo in todos:
+            # 목표 날짜가 있고, 긴급 기준 시간 내이며, 완료되지 않은 할일
+            if (todo.due_date is not None and 
+                now <= todo.due_date <= urgent_threshold and 
+                not todo.is_completed()):
+                urgent_todos.append(todo)
+        
+        return urgent_todos
+    
+    def get_due_today_todos(self) -> List[Todo]:
+        """
+        오늘 마감인 할일들 반환
+        
+        Requirements 4.2: 오늘 마감 할일 조회
+        
+        Returns:
+            List[Todo]: 오늘 마감인 미완료 할일 목록
+        """
+        from services.date_service import DateService
+        
+        date_ranges = DateService.get_date_filter_ranges()
+        today_start, today_end = date_ranges["오늘"]
+        
+        return self.get_todos_by_due_date(today_start, today_end)
+    
+    def get_due_this_week_todos(self) -> List[Todo]:
+        """
+        이번 주 마감인 할일들 반환
+        
+        Requirements 4.4: 이번 주 할일 조회
+        
+        Returns:
+            List[Todo]: 이번 주 마감인 할일 목록
+        """
+        from services.date_service import DateService
+        
+        date_ranges = DateService.get_date_filter_ranges()
+        week_start, week_end = date_ranges["이번 주"]
+        
+        return self.get_todos_by_due_date(week_start, week_end)
+    
+    def sort_todos_by_due_date(self, todos: List[Todo], 
+                              ascending: bool = True) -> List[Todo]:
+        """
+        목표 날짜순으로 할일 정렬
+        
+        Requirements 4.1: 목표 날짜순 정렬
+        
+        Args:
+            todos: 정렬할 할일 목록
+            ascending: 오름차순 정렬 여부 (True: 빠른 날짜부터, False: 늦은 날짜부터)
+            
+        Returns:
+            List[Todo]: 목표 날짜순으로 정렬된 할일 목록
+        """
+        def sort_key(todo: Todo):
+            # 목표 날짜가 없는 할일은 맨 뒤로
+            if todo.due_date is None:
+                return datetime.max if ascending else datetime.min
+            return todo.due_date
+        
+        return sorted(todos, key=sort_key, reverse=not ascending)
+    
+    def validate_subtask_due_date(self, todo_id: int, 
+                                 subtask_due_date: datetime) -> Tuple[bool, str]:
+        """
+        하위 작업 목표 날짜 유효성 검사
+        
+        Requirements 7.2: 하위 작업 목표 날짜 유효성 검사
+        
+        Args:
+            todo_id: 할일 ID
+            subtask_due_date: 검사할 하위 작업의 목표 날짜
+            
+        Returns:
+            Tuple[bool, str]: (유효성 여부, 오류 메시지)
+        """
+        # 해당 할일 찾기
+        target_todo = self.get_todo_by_id(todo_id)
+        
+        if target_todo is None:
+            return False, "해당 할일을 찾을 수 없습니다."
+        
+        # DateService를 사용하여 유효성 검사
+        from services.date_service import DateService
+        return DateService.validate_due_date(subtask_due_date, target_todo.due_date)
+    
+    def get_todos_with_overdue_subtasks(self) -> List[Todo]:
+        """
+        지연된 하위 작업이 있는 할일들 반환
+        
+        Requirements 7.3: 하위 작업 지연 상태 관리
+        
+        Returns:
+            List[Todo]: 지연된 하위 작업이 있는 할일 목록
+        """
+        todos = self.get_all_todos()
+        todos_with_overdue_subtasks = []
+        
+        for todo in todos:
+            if todo.has_overdue_subtasks():
+                todos_with_overdue_subtasks.append(todo)
+        
+        return todos_with_overdue_subtasks
+    
+    def _register_batch_callbacks(self) -> None:
+        """배치 업데이트 콜백 등록"""
+        batch_manager = self.performance_optimizer.batch_manager
+        
+        # 할일 업데이트 배치 콜백
+        batch_manager.register_update_callback('todo_update', self._batch_update_todos)
+        
+        # 하위작업 업데이트 배치 콜백
+        batch_manager.register_update_callback('subtask_update', self._batch_update_subtasks)
+        
+        # 목표 날짜 업데이트 배치 콜백
+        batch_manager.register_update_callback('due_date_update', self._batch_update_due_dates)
+    
+    def _batch_update_todos(self, updates: List[Dict[str, Any]]) -> None:
+        """할일 배치 업데이트 처리"""
+        try:
+            todos = self.get_all_todos()
+            updated_todos = set()
+            
+            for update in updates:
+                todo_id = update['item_id']
+                data = update['data']
+                
+                # 해당 할일 찾기
+                for todo in todos:
+                    if todo.id == todo_id:
+                        # 데이터 업데이트
+                        if 'title' in data:
+                            todo.title = data['title']
+                        if 'due_date' in data:
+                            todo.set_due_date(data['due_date'])
+                        if 'completed_at' in data:
+                            todo.completed_at = data['completed_at']
+                        
+                        updated_todos.add(todo_id)
+                        break
+            
+            # 배치로 저장
+            if updated_todos:
+                self.storage_service.save_todos_with_auto_save(todos)
+                self._todos_cache = None  # 캐시 무효화
+                
+                print(f"배치 업데이트 완료: {len(updated_todos)}개 할일")
+                
+        except Exception as e:
+            print(f"할일 배치 업데이트 실패: {e}")
+    
+    def _batch_update_subtasks(self, updates: List[Dict[str, Any]]) -> None:
+        """하위작업 배치 업데이트 처리"""
+        try:
+            todos = self.get_all_todos()
+            updated_count = 0
+            
+            for update in updates:
+                subtask_id = update['item_id']
+                data = update['data']
+                
+                # 해당 하위작업 찾기
+                for todo in todos:
+                    for subtask in todo.subtasks:
+                        if subtask.id == subtask_id:
+                            # 데이터 업데이트
+                            if 'title' in data:
+                                subtask.title = data['title']
+                            if 'is_completed' in data:
+                                subtask.is_completed = data['is_completed']
+                                if data['is_completed']:
+                                    subtask.completed_at = datetime.now()
+                                else:
+                                    subtask.completed_at = None
+                            if 'due_date' in data:
+                                subtask.set_due_date(data['due_date'])
+                            
+                            updated_count += 1
+                            break
+            
+            # 배치로 저장
+            if updated_count > 0:
+                self.storage_service.save_todos_with_auto_save(todos)
+                self._todos_cache = None  # 캐시 무효화
+                
+                print(f"배치 업데이트 완료: {updated_count}개 하위작업")
+                
+        except Exception as e:
+            print(f"하위작업 배치 업데이트 실패: {e}")
+    
+    def _batch_update_due_dates(self, updates: List[Dict[str, Any]]) -> None:
+        """목표 날짜 배치 업데이트 처리"""
+        try:
+            todos = self.get_all_todos()
+            updated_count = 0
+            
+            for update in updates:
+                item_id = update['item_id']
+                data = update['data']
+                item_type = data.get('type', 'todo')
+                
+                if item_type == 'todo':
+                    # 할일 목표 날짜 업데이트
+                    for todo in todos:
+                        if todo.id == item_id:
+                            todo.set_due_date(data.get('due_date'))
+                            updated_count += 1
+                            break
+                elif item_type == 'subtask':
+                    # 하위작업 목표 날짜 업데이트
+                    for todo in todos:
+                        for subtask in todo.subtasks:
+                            if subtask.id == item_id:
+                                subtask.set_due_date(data.get('due_date'))
+                                updated_count += 1
+                                break
+            
+            # 배치로 저장
+            if updated_count > 0:
+                self.storage_service.save_todos_with_auto_save(todos)
+                self._todos_cache = None  # 캐시 무효화
+                
+                print(f"목표 날짜 배치 업데이트 완료: {updated_count}개 항목")
+                
+        except Exception as e:
+            print(f"목표 날짜 배치 업데이트 실패: {e}")
+    
+    def queue_todo_update(self, todo_id: int, data: Dict[str, Any]) -> None:
+        """할일 업데이트를 배치 큐에 추가"""
+        self.performance_optimizer.batch_manager.queue_update('todo_update', todo_id, data)
+    
+    def queue_subtask_update(self, subtask_id: int, data: Dict[str, Any]) -> None:
+        """하위작업 업데이트를 배치 큐에 추가"""
+        self.performance_optimizer.batch_manager.queue_update('subtask_update', subtask_id, data)
+    
+    def queue_due_date_update(self, item_id: int, due_date: Optional[datetime], item_type: str = 'todo') -> None:
+        """목표 날짜 업데이트를 배치 큐에 추가"""
+        data = {
+            'due_date': due_date,
+            'type': item_type
+        }
+        self.performance_optimizer.batch_manager.queue_update('due_date_update', item_id, data)
+    
+    def get_filtered_and_sorted_todos(self, 
+                                     filter_type: str = "all",
+                                     sort_by: str = "created_at",
+                                     show_completed: bool = True) -> List[Todo]:
+        """
+        필터링과 정렬을 통합한 할일 조회
+        
+        Requirements 4.1, 4.2, 4.3, 4.4: 통합 필터링 및 정렬
+        
+        Args:
+            filter_type: 필터 타입 ("all", "due_today", "overdue", "urgent", "this_week")
+            sort_by: 정렬 기준 ("created_at", "title", "progress", "due_date")
+            show_completed: 완료된 할일 표시 여부
+            
+        Returns:
+            List[Todo]: 필터링 및 정렬된 할일 목록
+        """
+        # 필터링
+        if filter_type == "due_today":
+            todos = self.get_due_today_todos()
+        elif filter_type == "overdue":
+            todos = self.get_overdue_todos()
+        elif filter_type == "urgent":
+            todos = self.get_urgent_todos()
+        elif filter_type == "this_week":
+            todos = self.get_due_this_week_todos()
+        else:  # "all"
+            todos = self.get_all_todos()
+        
+        # 완료된 할일 필터링
+        if not show_completed:
+            todos = [todo for todo in todos if not todo.is_completed()]
+        
+        # 정렬
+        if sort_by == "due_date":
+            todos = self.sort_todos_by_due_date(todos)
+        else:
+            todos = self.sort_todos(todos, sort_by)
+        
+        return todos
+
     def shutdown(self) -> None:
         """서비스 종료 시 정리 작업을 수행합니다."""
+        # 배치 업데이트 강제 플러시
+        self.performance_optimizer.batch_manager.force_flush()
+        
         # 마지막 저장 수행
         self.force_save()
         
         # 스토리지 서비스 종료
         self.storage_service.shutdown()
+        
+        # 성능 최적화기 종료
+        self.performance_optimizer.shutdown()
         
         print("TodoService가 정상적으로 종료되었습니다.")

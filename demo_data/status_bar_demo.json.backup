@@ -1,0 +1,256 @@
+{
+  "todos": [
+    {
+      "id": 1,
+      "title": "중요한 프로젝트 마감 (3일 지연)",
+      "created_at": "2025-08-18T17:18:03.680225",
+      "folder_path": "todo_folders\\todo_1_중요한_프로젝트_마감__3일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 2,
+      "title": "중요한 프로젝트 마감 (3일 지연)",
+      "created_at": "2025-08-18T17:19:01.377077",
+      "folder_path": "todo_folders\\todo_2_중요한_프로젝트_마감__3일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 3,
+      "title": "클라이언트 미팅 준비 (1일 지연)",
+      "created_at": "2025-08-18T17:19:01.380081",
+      "folder_path": "todo_folders\\todo_3_클라이언트_미팅_준비__1일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 4,
+      "title": "보고서 제출",
+      "created_at": "2025-08-18T17:19:01.382080",
+      "folder_path": "todo_folders\\todo_4_보고서_제출",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T18:00:00",
+      "completed_at": null
+    },
+    {
+      "id": 5,
+      "title": "팀 회의 참석",
+      "created_at": "2025-08-18T17:19:01.388077",
+      "folder_path": "todo_folders\\todo_5_팀_회의_참석",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 6,
+      "title": "중요한 프로젝트 마감 (3일 지연)",
+      "created_at": "2025-08-18T17:20:30.185425",
+      "folder_path": "todo_folders\\todo_6_중요한_프로젝트_마감__3일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 7,
+      "title": "클라이언트 미팅 준비 (1일 지연)",
+      "created_at": "2025-08-18T17:20:30.189428",
+      "folder_path": "todo_folders\\todo_7_클라이언트_미팅_준비__1일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 8,
+      "title": "보고서 제출",
+      "created_at": "2025-08-18T17:20:30.192427",
+      "folder_path": "todo_folders\\todo_8_보고서_제출",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T23:59:00",
+      "completed_at": null
+    },
+    {
+      "id": 9,
+      "title": "팀 회의 참석",
+      "created_at": "2025-08-18T17:20:30.199426",
+      "folder_path": "todo_folders\\todo_9_팀_회의_참석",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T19:20:00",
+      "completed_at": null
+    },
+    {
+      "id": 10,
+      "title": "코드 리뷰 완료",
+      "created_at": "2025-08-18T17:20:30.206425",
+      "folder_path": "todo_folders\\todo_10_코드_리뷰_완료",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T21:20:00",
+      "completed_at": null
+    },
+    {
+      "id": 11,
+      "title": "주간 계획 수립",
+      "created_at": "2025-08-18T17:20:30.213426",
+      "folder_path": "todo_folders\\todo_11_주간_계획_수립",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-19T17:20:30.184424",
+      "completed_at": null
+    },
+    {
+      "id": 12,
+      "title": "아이디어 정리",
+      "created_at": "2025-08-18T17:20:30.220425",
+      "folder_path": "todo_folders\\todo_12_아이디어_정리",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 13,
+      "title": "새 기능 개발",
+      "created_at": "2025-08-18T17:20:30.223428",
+      "folder_path": "todo_folders\\todo_13_새_기능_개발",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 14,
+      "title": "완료된 작업 (지연되었음)",
+      "created_at": "2025-08-18T17:20:30.227425",
+      "folder_path": "todo_folders\\todo_14_완료된_작업__지연되었음",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 15,
+      "title": "중요한 프로젝트 마감 (3일 지연)",
+      "created_at": "2025-08-18T17:20:49.786688",
+      "folder_path": "todo_folders\\todo_15_중요한_프로젝트_마감__3일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 16,
+      "title": "클라이언트 미팅 준비 (1일 지연)",
+      "created_at": "2025-08-18T17:20:49.790688",
+      "folder_path": "todo_folders\\todo_16_클라이언트_미팅_준비__1일_지연",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 17,
+      "title": "보고서 제출",
+      "created_at": "2025-08-18T17:20:49.794688",
+      "folder_path": "todo_folders\\todo_17_보고서_제출",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T23:59:00",
+      "completed_at": null
+    },
+    {
+      "id": 18,
+      "title": "팀 회의 참석",
+      "created_at": "2025-08-18T17:20:49.802690",
+      "folder_path": "todo_folders\\todo_18_팀_회의_참석",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T19:20:00",
+      "completed_at": null
+    },
+    {
+      "id": 19,
+      "title": "코드 리뷰 완료",
+      "created_at": "2025-08-18T17:20:49.810688",
+      "folder_path": "todo_folders\\todo_19_코드_리뷰_완료",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T21:20:00",
+      "completed_at": null
+    },
+    {
+      "id": 20,
+      "title": "주간 계획 수립",
+      "created_at": "2025-08-18T17:20:49.818689",
+      "folder_path": "todo_folders\\todo_20_주간_계획_수립",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-19T17:20:49.786688",
+      "completed_at": null
+    },
+    {
+      "id": 21,
+      "title": "아이디어 정리",
+      "created_at": "2025-08-18T17:20:49.826688",
+      "folder_path": "todo_folders\\todo_21_아이디어_정리",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 22,
+      "title": "새 기능 개발",
+      "created_at": "2025-08-18T17:20:49.831688",
+      "folder_path": "todo_folders\\todo_22_새_기능_개발",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 23,
+      "title": "완료된 작업 (지연되었음)",
+      "created_at": "2025-08-18T17:20:49.836688",
+      "folder_path": "todo_folders\\todo_23_완료된_작업__지연되었음",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    },
+    {
+      "id": 24,
+      "title": "긴급 작업 (17:21 추가)",
+      "created_at": "2025-08-18T17:21:06.511206",
+      "folder_path": "todo_folders\\todo_24_긴급_작업__17_21_추가",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": "2025-08-18T19:21:06.510205",
+      "completed_at": null
+    },
+    {
+      "id": 25,
+      "title": "긴급 작업 (17:21 추가)",
+      "created_at": "2025-08-18T17:21:21.499320",
+      "folder_path": "todo_folders\\todo_25_긴급_작업__17_21_추가",
+      "subtasks": [],
+      "is_expanded": true,
+      "due_date": null,
+      "completed_at": null
+    }
+  ],
+  "next_id": 26,
+  "next_subtask_id": 1
+}
